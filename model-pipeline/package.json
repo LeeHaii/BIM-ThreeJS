@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "convert:ifc": "tsx src/cli.ts convert-ifc",
     "lint": "eslint src tests",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -12,10 +13,13 @@
   },
   "dependencies": {
     "@bim/shared": "workspace:*",
+    "@thatopen/fragments": "3.4.7",
+    "web-ifc": "0.0.77",
     "zod": "4.1.5"
   },
   "devDependencies": {
     "@types/node": "24.3.0",
+    "@types/three": "0.184.0",
     "tsx": "4.20.5"
   }
 }

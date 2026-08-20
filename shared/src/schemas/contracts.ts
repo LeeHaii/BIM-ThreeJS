@@ -54,6 +54,11 @@ export const unitSummarySchema = z.object({
   unitType: nonEmptyString,
   storeyCode: nonEmptyString,
   status: z.enum(["active", "inactive"]),
+  address: nonEmptyString.optional(),
+  area: z.number().nonnegative().optional(),
+  owner: nonEmptyString.optional(),
+  certificateNumber: nonEmptyString.optional(),
+  ownershipTerm: nonEmptyString.optional(),
 });
 
 export const occupancyViewSchema = z.object({
@@ -61,6 +66,11 @@ export const occupancyViewSchema = z.object({
   displayName: nonEmptyString.optional(),
   email: z.email().optional(),
   phone: nonEmptyString.optional(),
+  citizenId: nonEmptyString.optional(),
+  dateOfBirth: z.iso.date().optional(),
+  gender: nonEmptyString.optional(),
+  residenceType: nonEmptyString.optional(),
+  status: nonEmptyString.optional(),
   startsAt: z.iso.datetime(),
   endsAt: z.iso.datetime().optional(),
 });

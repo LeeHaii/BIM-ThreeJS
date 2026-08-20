@@ -9,6 +9,7 @@ from bim_api.infrastructure.models import (
     ModelVersionRecord,
     OccupancyRecord,
     PersonRecord,
+    SceneVersionRecord,
     SiteRecord,
     UnitRecord,
     UserBuildingAccessRecord,
@@ -102,6 +103,20 @@ class ModelService:
             raise ApiError(404, "active_model_not_found", "No active model is available")
         return version.manifest
 
+    def get_active_scene_manifest(
+        self, session: Session, actor: Actor, building_id: str
+    ) -> dict[str, object]:
+        self.authorization.require_building_access(session, actor, building_id)
+        version = session.scalar(
+            select(SceneVersionRecord).where(
+                SceneVersionRecord.building_id == building_id,
+                SceneVersionRecord.status == "active",
+            )
+        )
+        if version is None:
+            raise ApiError(404, "active_scene_not_found", "No active scene is available")
+        return version.manifest
+
 
 class UnitService:
     def __init__(self, authorization: AuthorizationService):
@@ -140,7 +155,12 @@ class UnitService:
                 unit_type=record.unit_type,
                 storey_code=record.storey_code,
                 status=record.status,
-            ).model_dump(by_alias=True)
+                address=record.address,
+                area=record.area,
+                owner=record.owner,
+                certificate_number=record.certificate_number,
+                ownership_term=record.ownership_term,
+            ).model_dump(by_alias=True, exclude_none=True)
             for record in records
         ]
         return Page(items=items, page=page, page_size=page_size, total=total)
@@ -175,6 +195,11 @@ class UnitService:
                 display_name=person.display_name if "display_name" in fields else None,
                 email=person.email if "email" in fields else None,
                 phone=person.phone if "phone" in fields else None,
+                citizen_id=person.citizen_id if "citizen_id" in fields else None,
+                date_of_birth=person.date_of_birth if "date_of_birth" in fields else None,
+                gender=person.gender if "gender" in fields else None,
+                residence_type=occupancy.residence_type,
+                status=occupancy.status,
                 starts_at=iso_utc(occupancy.starts_at),
                 ends_at=iso_utc(occupancy.ends_at) if occupancy.ends_at is not None else None,
             )

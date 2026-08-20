@@ -1,18 +1,18 @@
 import {
   buildingDetailSchema,
   buildingSummarySchema,
-  modelManifestSchema,
   occupancyViewSchema,
   pageSchema,
+  sceneManifestV2Schema,
   unitSummarySchema,
 } from "@bim/shared";
 import type {
   BuildingDetail,
   BuildingId,
   BuildingSummary,
-  ModelManifest,
   OccupancyView,
   Page,
+  SceneManifestV2,
   UnitId,
   UnitSummary,
 } from "@bim/shared";
@@ -68,13 +68,13 @@ export class ApiClient {
     );
   }
 
-  public getActiveManifest(
+  public getActiveSceneManifest(
     buildingId: BuildingId,
     signal: AbortSignal,
-  ): Promise<ModelManifest> {
+  ): Promise<SceneManifestV2> {
     return this.request(
-      `/buildings/${buildingId}/models/active/manifest`,
-      modelManifestSchema,
+      `/buildings/${buildingId}/scenes/active/manifest`,
+      sceneManifestV2Schema,
       signal,
     );
   }

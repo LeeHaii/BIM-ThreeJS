@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BIM_", env_file=".env", extra="ignore")
 
     environment: str = "development"
-    database_url: str = "sqlite:///./bim-platform.db"
+    database_url: str = "sqlite:///./bim-platform-v2.db"
     allow_dev_auth: bool = False
     seed_synthetic_data: bool = True
     seed_path: Path = (

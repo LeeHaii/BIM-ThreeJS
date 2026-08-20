@@ -46,6 +46,11 @@ export interface UnitSummary {
   readonly unitType: string;
   readonly storeyCode: string;
   readonly status: "active" | "inactive";
+  readonly address?: string | undefined;
+  readonly area?: number | undefined;
+  readonly owner?: string | undefined;
+  readonly certificateNumber?: string | undefined;
+  readonly ownershipTerm?: string | undefined;
 }
 
 export interface OccupancyView {
@@ -53,6 +58,11 @@ export interface OccupancyView {
   readonly displayName?: string | undefined;
   readonly email?: string | undefined;
   readonly phone?: string | undefined;
+  readonly citizenId?: string | undefined;
+  readonly dateOfBirth?: string | undefined;
+  readonly gender?: string | undefined;
+  readonly residenceType?: string | undefined;
+  readonly status?: string | undefined;
   readonly startsAt: string;
   readonly endsAt?: string | undefined;
 }

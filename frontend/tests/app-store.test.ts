@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BuildingId, ModelManifest } from "@bim/shared";
+import type { BuildingId, SceneManifestV2 } from "@bim/shared";
 import { initialState } from "../src/app/app-state.js";
 import { reduceAppState } from "../src/app/app-store.js";
 
@@ -29,7 +29,7 @@ describe("application reducer", () => {
         locale: "en",
         features: {},
       },
-      manifest: {} as ModelManifest,
+      manifest: {} as SceneManifestV2,
       units: [],
     });
     expect(result).toBe(loadingBeta);
@@ -51,5 +51,36 @@ describe("application reducer", () => {
     });
     expect(result.units.selectedId).toBeUndefined();
     expect(result.occupancies.items).toEqual([]);
+  });
+
+  it("does not expose household state outside household mode", () => {
+    const result = reduceAppState(initialState, {
+      type: "SELECT_UNIT",
+      generation: initialState.generation,
+      unitId: "a1111111-1111-4111-8111-111111111101" as never,
+    });
+    expect(result.units.selectedId).toBeUndefined();
+    expect(result.occupancies.status).toBe("idle");
+  });
+
+  it("does not retain BIM selection when leaving BIM mode", () => {
+    const bimState = {
+      ...initialState,
+      mode: "bim" as const,
+      bimSelection: {
+        ref: {
+          modelVersionId: "32222222-2222-4222-8222-222222222222" as never,
+          modelLocalId: 42,
+        },
+        title: "Wall",
+        worldPosition: [1, 2, 3] as const,
+        properties: [],
+      },
+    };
+    const result = reduceAppState(bimState, {
+      type: "ENTER_MODE",
+      mode: "units",
+    });
+    expect(result.bimSelection).toBeUndefined();
   });
 });

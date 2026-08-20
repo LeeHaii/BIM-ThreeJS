@@ -1,11 +1,26 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { convertIfcToFragments } from "./services/ifc-fragment-conversion-service.js";
 import { validateOnboardingPackage } from "./services/onboarding-validator.js";
 
 async function main(): Promise<void> {
-  const [, , command, inputPath] = process.argv;
+  const [, , command, inputPath, outputPath] = process.argv;
+  if (command === "convert-ifc") {
+    if (inputPath === undefined || outputPath === undefined) {
+      throw new Error("Usage: convert-ifc <input.ifc> <output.frag>");
+    }
+    const report = await convertIfcToFragments({ inputPath, outputPath });
+    await writeFile(
+      `${resolve(outputPath)}.report.json`,
+      `${JSON.stringify(report, null, 2)}\n`,
+    );
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    return;
+  }
   if (command !== "validate-onboarding" || inputPath === undefined) {
-    throw new Error("Usage: validate-onboarding <package.json>");
+    throw new Error(
+      "Usage: validate-onboarding <package.json> | convert-ifc <input.ifc> <output.frag>",
+    );
   }
 
   const absolutePath = resolve(inputPath);

@@ -64,6 +64,13 @@ def get_active_manifest(
     return request.app.state.models.get_active_manifest(session, actor, building_id)
 
 
+@router.get("/buildings/{building_id}/scenes/active/manifest")
+def get_active_scene_manifest(
+    building_id: str, request: Request, session: SessionDependency, actor: ActorDependency
+) -> dict[str, object]:
+    return request.app.state.models.get_active_scene_manifest(session, actor, building_id)
+
+
 @router.get("/buildings/{building_id}/units", response_model=Page)
 def search_units(
     building_id: str,

@@ -1,10 +1,10 @@
 # Frontend
 
-Vanilla TypeScript/Vite presentation over a pure reducer and explicit application
-coordinator. The current vertical slice provides the building catalog, validated
-active manifests, deterministic building switching, unit search, and privacy-safe
-occupant presentation.
+Vanilla TypeScript/Vite operator viewer over a pure reducer, an explicit application
+coordinator, and a disposable viewer-session adapter. It provides current-building
+routes, deterministic switching, real Fragments/GLB layers, camera and layer
+controls, BIM picking, and mode-gated household data.
 
-The 3D pane is intentionally a model-session readiness view until a representative
-`.frag` fixture and matching self-hosted worker/WASM are added. No fake IFC parser
-or building-specific geometry is embedded in this milestone.
+`pnpm runtime:assets` verifies the exact dependency versions and copies the matching
+Fragments worker and web-ifc WASM into `public`. Both scene fixtures are hash- and
+size-verified before loading. Operational records remain explicitly synthetic.

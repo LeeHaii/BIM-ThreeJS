@@ -2,11 +2,15 @@ import type {
   BuildingDetail,
   BuildingId,
   BuildingSummary,
-  ModelManifest,
   OccupancyView,
+  SceneManifestV2,
   UnitId,
   UnitSummary,
 } from "@bim/shared";
+import type {
+  ViewerLayerState,
+  ViewerPick,
+} from "../modules/viewer-runtime/index.js";
 
 export type LoadStatus = "idle" | "loading" | "ready" | "error";
 
@@ -22,9 +26,17 @@ export interface AppState {
     readonly status: LoadStatus;
   };
   readonly model: {
-    readonly manifest: ModelManifest | undefined;
+    readonly manifest: SceneManifestV2 | undefined;
     readonly status: LoadStatus;
   };
+  readonly viewer: {
+    readonly status: LoadStatus;
+    readonly loadedBytes: number;
+    readonly totalBytes: number;
+    readonly layers: readonly ViewerLayerState[];
+    readonly touchNavigation: "orbit" | "vertical";
+  };
+  readonly bimSelection: ViewerPick | undefined;
   readonly units: {
     readonly query: string;
     readonly status: LoadStatus;
@@ -44,6 +56,14 @@ export const initialState: AppState = {
   catalog: { status: "idle", buildings: [] },
   building: { selectedId: undefined, detail: undefined, status: "idle" },
   model: { manifest: undefined, status: "idle" },
+  viewer: {
+    status: "idle",
+    loadedBytes: 0,
+    totalBytes: 0,
+    layers: [],
+    touchNavigation: "orbit",
+  },
+  bimSelection: undefined,
   units: { query: "", status: "idle", items: [], selectedId: undefined },
   occupancies: { status: "idle", items: [] },
   mode: "overview",

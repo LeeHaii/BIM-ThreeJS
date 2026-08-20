@@ -55,6 +55,18 @@ def test_active_manifests_are_data_driven() -> None:
         assert len(alpha["fragmentLayers"]) != len(beta["fragmentLayers"])
 
 
+def test_active_scene_manifest_exposes_real_runtime_layers() -> None:
+    with client() as api:
+        scene = api.get(
+            f"/api/v1/buildings/{ALPHA}/scenes/active/manifest",
+            headers={"X-Actor-Id": ADMIN},
+        )
+        assert scene.status_code == 200
+        assert scene.json()["schemaVersion"] == "2.0"
+        assert [layer["type"] for layer in scene.json()["layers"]] == ["fragments", "gltf"]
+        assert scene.json()["runtimeCompatibility"]["workerUrl"].endswith(".mjs")
+
+
 def test_occupancy_fields_follow_role_policy_and_are_not_cached() -> None:
     with client() as api:
         operator = api.get(

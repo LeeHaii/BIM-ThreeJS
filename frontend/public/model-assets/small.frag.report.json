@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0",
+  "inputPath": "tests/fixtures/small.ifc",
+  "outputPath": "../frontend/public/model-assets/small.frag",
+  "byteSize": 74115,
+  "sha256": "93760cd5bf54052311a35ccdbd3041329803a5006a083561a76b68b2f3f5513c",
+  "converter": "@thatopen/fragments@3.4.7",
+  "webIfc": "0.0.77"
+}

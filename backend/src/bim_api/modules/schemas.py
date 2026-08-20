@@ -26,6 +26,11 @@ class UnitSummary(ApiModel):
     unit_type: str
     storey_code: str
     status: str
+    address: str | None = None
+    area: float | None = None
+    owner: str | None = None
+    certificate_number: str | None = None
+    ownership_term: str | None = None
 
 
 class OccupancyView(ApiModel):
@@ -33,6 +38,11 @@ class OccupancyView(ApiModel):
     display_name: str | None = None
     email: str | None = None
     phone: str | None = None
+    citizen_id: str | None = None
+    date_of_birth: str | None = None
+    gender: str | None = None
+    residence_type: str | None = None
+    status: str | None = None
     starts_at: str
     ends_at: str | None = None
 

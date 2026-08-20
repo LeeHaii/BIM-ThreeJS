@@ -9,4 +9,4 @@ __pycache__
 *.sqlite*
 pnpm-lock.yaml
 backend/uv.lock
-
+frontend/public/workers/fragments-worker.mjs

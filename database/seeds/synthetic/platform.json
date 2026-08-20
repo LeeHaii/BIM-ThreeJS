@@ -1,6 +1,10 @@
 {
   "organizations": [
-    { "id": "00000000-0000-4000-8000-000000000001", "name": "Synthetic Facilities Group", "status": "active" }
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Synthetic Facilities Group",
+      "status": "active"
+    }
   ],
   "sites": [
     {
@@ -25,7 +29,14 @@
       "code": "ALPHA",
       "name": "Alpha Residential Tower",
       "status": "active",
-      "configuration": { "features": { "bimInspection": true, "units": true, "occupants": true, "context": false } }
+      "configuration": {
+        "features": {
+          "bimInspection": true,
+          "units": true,
+          "occupants": true,
+          "context": false
+        }
+      }
     },
     {
       "id": "12222222-2222-4222-8222-222222222222",
@@ -33,7 +44,14 @@
       "code": "BETA",
       "name": "Beta Campus",
       "status": "active",
-      "configuration": { "features": { "bimInspection": true, "units": true, "occupants": true, "context": true } }
+      "configuration": {
+        "features": {
+          "bimInspection": true,
+          "units": true,
+          "occupants": true,
+          "context": true
+        }
+      }
     }
   ],
   "models": [
@@ -69,9 +87,21 @@
         "modelVersionId": "31111111-1111-4111-8111-111111111111",
         "label": "2026.08",
         "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "defaultCamera": { "position": [38, 26, 38], "target": [0, 10, 0], "fov": 45 },
+        "defaultCamera": {
+          "position": [38, 26, 38],
+          "target": [0, 10, 0],
+          "fov": 45
+        },
         "namedViews": [
-          { "id": "entrance", "label": "Main entrance", "camera": { "position": [12, 4, 22], "target": [0, 3, 0], "fov": 50 } }
+          {
+            "id": "entrance",
+            "label": "Main entrance",
+            "camera": {
+              "position": [12, 4, 22],
+              "target": [0, 3, 0],
+              "fov": 50
+            }
+          }
         ],
         "fragmentLayers": [
           {
@@ -89,7 +119,11 @@
           }
         ],
         "capabilities": ["properties", "spatialTree", "unitBindings"],
-        "compatibility": { "components": "3.4.8", "fragments": "3.4.7", "webIfc": "0.0.77" }
+        "compatibility": {
+          "components": "3.4.8",
+          "fragments": "3.4.7",
+          "webIfc": "0.0.77"
+        }
       }
     },
     {
@@ -108,10 +142,22 @@
         "modelVersionId": "32222222-2222-4222-8222-222222222222",
         "label": "handover-r3",
         "sourceHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "defaultCamera": { "position": [110, 72, 95], "target": [15, 4, 10], "fov": 52 },
+        "defaultCamera": {
+          "position": [110, 72, 95],
+          "target": [15, 4, 10],
+          "fov": 52
+        },
         "namedViews": [
-          { "id": "campus", "label": "Campus overview", "camera": { "position": [140, 95, 120], "target": [20, 2, 12] } },
-          { "id": "courtyard", "label": "Courtyard", "camera": { "position": [35, 12, 28], "target": [15, 3, 10] } }
+          {
+            "id": "campus",
+            "label": "Campus overview",
+            "camera": { "position": [140, 95, 120], "target": [20, 2, 12] }
+          },
+          {
+            "id": "courtyard",
+            "label": "Courtyard",
+            "camera": { "position": [35, 12, 28], "target": [15, 3, 10] }
+          }
         ],
         "fragmentLayers": [
           {
@@ -141,33 +187,468 @@
             "defaultVisible": true
           }
         ],
-        "capabilities": ["properties", "spatialTree", "unitBindings", "context"],
-        "compatibility": { "components": "3.4.8", "fragments": "3.4.7", "webIfc": "0.0.77" }
+        "capabilities": [
+          "properties",
+          "spatialTree",
+          "unitBindings",
+          "context"
+        ],
+        "compatibility": {
+          "components": "3.4.8",
+          "fragments": "3.4.7",
+          "webIfc": "0.0.77"
+        }
+      }
+    }
+  ],
+  "sceneVersions": [
+    {
+      "id": "41111111-1111-4111-8111-111111111111",
+      "building_id": "11111111-1111-4111-8111-111111111111",
+      "version_label": "operator-viewer-v1",
+      "status": "active",
+      "release_notes": "Real Fragments and GLB runtime spike",
+      "activated_at": "2026-08-20T00:00:00Z",
+      "manifest": {
+        "schemaVersion": "2.0",
+        "buildingId": "11111111-1111-4111-8111-111111111111",
+        "sceneVersionId": "41111111-1111-4111-8111-111111111111",
+        "label": "Operator viewer fixture",
+        "runtimeCompatibility": {
+          "components": "3.4.8",
+          "componentsFront": "3.4.4",
+          "fragments": "3.4.7",
+          "three": "0.184.0",
+          "webIfc": "0.0.77",
+          "workerUrl": "/workers/fragments-worker.mjs",
+          "wasmUrl": "/wasm/web-ifc.wasm"
+        },
+        "settings": {
+          "background": { "color": "#dce4e8" },
+          "lighting": {
+            "ambientColor": "#ffffff",
+            "ambientIntensity": 1.6,
+            "directionalColor": "#fff4df",
+            "directionalIntensity": 2.4,
+            "directionalPosition": [18, 32, 12]
+          },
+          "origin": { "policy": "coordinate-to-origin" },
+          "defaultCamera": {
+            "position": [28, 20, 28],
+            "target": [0, 4, 0],
+            "fov": 45
+          },
+          "namedViews": [
+            {
+              "id": "overview",
+              "label": "Overview",
+              "camera": {
+                "position": [28, 20, 28],
+                "target": [0, 4, 0],
+                "fov": 45
+              }
+            },
+            {
+              "id": "entrance",
+              "label": "Entrance",
+              "camera": {
+                "position": [12, 5, 18],
+                "target": [0, 3, 0],
+                "fov": 50
+              }
+            }
+          ],
+          "navigation": {
+            "minimumDistance": 2,
+            "maximumDistance": 160,
+            "verticalMinimum": -4,
+            "verticalMaximum": 80
+          }
+        },
+        "layers": [
+          {
+            "id": "bim-architecture",
+            "assetVersionId": "51111111-1111-4111-8111-111111111111",
+            "type": "fragments",
+            "purpose": "bim-architecture",
+            "name": "Architecture",
+            "assetUrl": "/model-assets/small.frag",
+            "contentHash": "93760cd5bf54052311a35ccdbd3041329803a5006a083561a76b68b2f3f5513c",
+            "byteSize": 74115,
+            "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            "defaultVisible": true,
+            "selectable": true,
+            "castShadow": true,
+            "receiveShadow": true,
+            "bim": {
+              "modelId": "21111111-1111-4111-8111-111111111111",
+              "modelVersionId": "31111111-1111-4111-8111-111111111111",
+              "propertyProfileId": "residential-v1"
+            }
+          },
+          {
+            "id": "site-context",
+            "assetVersionId": "61111111-1111-4111-8111-111111111111",
+            "type": "gltf",
+            "purpose": "context-site",
+            "name": "Site plinth",
+            "assetUrl": "/model-assets/box.glb",
+            "contentHash": "ed52f7192b8311d700ac0ce80644e3852cd01537e4d62241b9acba023da3d54e",
+            "byteSize": 1664,
+            "transform": [30, 0, 0, 0, 0, 0.35, 0, 0, 0, 0, 30, 0, 0, -1, 0, 1],
+            "defaultVisible": true,
+            "selectable": false,
+            "castShadow": false,
+            "receiveShadow": true
+          }
+        ],
+        "bimProfiles": [
+          {
+            "id": "residential-v1",
+            "ignoredKeys": ["expressID", "type"],
+            "aliases": { "GlobalId": "Global ID", "ObjectType": "Object type" },
+            "groups": ["Identity", "Attributes", "Property sets"]
+          }
+        ],
+        "viewerUi": {
+          "layout": "left-upper-viewport",
+          "enabledModes": ["overview", "bim", "units"],
+          "defaultMode": "overview",
+          "collapsedLeftWidth": 35,
+          "upperPanelHeight": 34,
+          "modePanels": [
+            {
+              "mode": "bim",
+              "width": 190,
+              "buttonLabel": { "en": "BIM structure", "vi": "Quản lý kết cấu" },
+              "panelKind": "bim-properties"
+            },
+            {
+              "mode": "units",
+              "width": 400,
+              "buttonLabel": { "en": "Households", "vi": "Quản lý hộ dân" },
+              "panelKind": "households"
+            }
+          ],
+          "upperToolbar": [
+            {
+              "id": "reset",
+              "label": { "en": "Reset view", "vi": "Đặt lại góc nhìn" }
+            },
+            {
+              "id": "bim",
+              "label": { "en": "BIM structure", "vi": "Quản lý kết cấu" }
+            },
+            {
+              "id": "households",
+              "label": { "en": "Households", "vi": "Quản lý hộ dân" }
+            },
+            {
+              "id": "touch-navigation",
+              "label": { "en": "Touch navigation", "vi": "Điều hướng cảm ứng" }
+            }
+          ],
+          "touchNavigation": { "enabled": true, "defaultMode": "orbit" },
+          "labels": { "collapse": { "en": "Collapse", "vi": "Thu gọn" } }
+        }
+      }
+    },
+    {
+      "id": "42222222-2222-4222-8222-222222222222",
+      "building_id": "12222222-2222-4222-8222-222222222222",
+      "version_label": "operator-viewer-v1",
+      "status": "active",
+      "release_notes": "Federated shell configuration using verified runtime fixtures",
+      "activated_at": "2026-08-20T00:00:00Z",
+      "manifest": {
+        "schemaVersion": "2.0",
+        "buildingId": "12222222-2222-4222-8222-222222222222",
+        "sceneVersionId": "42222222-2222-4222-8222-222222222222",
+        "label": "Campus operator fixture",
+        "runtimeCompatibility": {
+          "components": "3.4.8",
+          "componentsFront": "3.4.4",
+          "fragments": "3.4.7",
+          "three": "0.184.0",
+          "webIfc": "0.0.77",
+          "workerUrl": "/workers/fragments-worker.mjs",
+          "wasmUrl": "/wasm/web-ifc.wasm"
+        },
+        "settings": {
+          "background": { "color": "#d8e2e7" },
+          "lighting": {
+            "ambientColor": "#eaf4ff",
+            "ambientIntensity": 1.4,
+            "directionalColor": "#fff1d2",
+            "directionalIntensity": 2.2,
+            "directionalPosition": [-22, 38, 18]
+          },
+          "origin": { "policy": "coordinate-to-origin" },
+          "defaultCamera": {
+            "position": [34, 24, 34],
+            "target": [0, 4, 0],
+            "fov": 50
+          },
+          "namedViews": [
+            {
+              "id": "campus",
+              "label": "Campus overview",
+              "camera": {
+                "position": [34, 24, 34],
+                "target": [0, 4, 0],
+                "fov": 50
+              }
+            }
+          ],
+          "navigation": {
+            "minimumDistance": 2,
+            "maximumDistance": 220,
+            "verticalMinimum": -8,
+            "verticalMaximum": 110
+          }
+        },
+        "layers": [
+          {
+            "id": "bim-federated",
+            "assetVersionId": "52222222-2222-4222-8222-222222222222",
+            "type": "fragments",
+            "purpose": "bim-federated",
+            "name": "Federated BIM",
+            "assetUrl": "/model-assets/small.frag",
+            "contentHash": "93760cd5bf54052311a35ccdbd3041329803a5006a083561a76b68b2f3f5513c",
+            "byteSize": 74115,
+            "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            "defaultVisible": true,
+            "selectable": true,
+            "castShadow": true,
+            "receiveShadow": true,
+            "bim": {
+              "modelId": "22222222-2222-4222-8222-222222222222",
+              "modelVersionId": "32222222-2222-4222-8222-222222222222",
+              "propertyProfileId": "campus-v1"
+            }
+          },
+          {
+            "id": "campus-context",
+            "assetVersionId": "62222222-2222-4222-8222-222222222222",
+            "type": "gltf",
+            "purpose": "context-site",
+            "name": "Campus context",
+            "assetUrl": "/model-assets/box.glb",
+            "contentHash": "ed52f7192b8311d700ac0ce80644e3852cd01537e4d62241b9acba023da3d54e",
+            "byteSize": 1664,
+            "transform": [42, 0, 0, 0, 0, 0.3, 0, 0, 0, 0, 34, 0, 0, -1, 0, 1],
+            "defaultVisible": true,
+            "selectable": false,
+            "castShadow": false,
+            "receiveShadow": true
+          }
+        ],
+        "bimProfiles": [
+          {
+            "id": "campus-v1",
+            "ignoredKeys": ["expressID", "type"],
+            "aliases": { "GlobalId": "Global ID", "LongName": "Long name" },
+            "groups": ["Identity", "Attributes", "Property sets"]
+          }
+        ],
+        "viewerUi": {
+          "layout": "left-upper-viewport",
+          "enabledModes": ["overview", "bim", "units"],
+          "defaultMode": "overview",
+          "collapsedLeftWidth": 35,
+          "upperPanelHeight": 34,
+          "modePanels": [
+            {
+              "mode": "bim",
+              "width": 210,
+              "buttonLabel": { "en": "BIM structure", "da": "BIM-struktur" },
+              "panelKind": "bim-properties"
+            },
+            {
+              "mode": "units",
+              "width": 420,
+              "buttonLabel": {
+                "en": "Managed spaces",
+                "da": "Administrerede rum"
+              },
+              "panelKind": "households"
+            }
+          ],
+          "upperToolbar": [
+            {
+              "id": "reset",
+              "label": { "en": "Reset view", "da": "Nulstil visning" }
+            },
+            {
+              "id": "bim",
+              "label": { "en": "BIM structure", "da": "BIM-struktur" }
+            },
+            {
+              "id": "households",
+              "label": { "en": "Managed spaces", "da": "Administrerede rum" }
+            },
+            {
+              "id": "touch-navigation",
+              "label": { "en": "Touch navigation", "da": "Berøringsnavigation" }
+            }
+          ],
+          "touchNavigation": { "enabled": true, "defaultMode": "orbit" },
+          "labels": { "collapse": { "en": "Collapse", "da": "Skjul" } }
+        }
       }
     }
   ],
   "units": [
-    { "id": "a1111111-1111-4111-8111-111111111101", "building_id": "11111111-1111-4111-8111-111111111111", "code": "A-0101", "display_name": "Apartment 101", "unit_type": "apartment", "storey_code": "L01", "status": "active" },
-    { "id": "a1111111-1111-4111-8111-111111111102", "building_id": "11111111-1111-4111-8111-111111111111", "code": "A-0201", "display_name": "Apartment 201", "unit_type": "apartment", "storey_code": "L02", "status": "active" },
-    { "id": "a1111111-1111-4111-8111-111111111103", "building_id": "11111111-1111-4111-8111-111111111111", "code": "A-1204", "display_name": "Apartment 1204", "unit_type": "apartment", "storey_code": "L12", "status": "active" },
-    { "id": "b2222222-2222-4222-8222-222222222201", "building_id": "12222222-2222-4222-8222-222222222222", "code": "E-LAB-01", "display_name": "East Materials Lab", "unit_type": "laboratory", "storey_code": "E-GF", "status": "active" },
-    { "id": "b2222222-2222-4222-8222-222222222202", "building_id": "12222222-2222-4222-8222-222222222222", "code": "W-MTG-14", "display_name": "West Collaboration Room", "unit_type": "meeting-room", "storey_code": "W-L03", "status": "active" }
+    {
+      "id": "a1111111-1111-4111-8111-111111111101",
+      "building_id": "11111111-1111-4111-8111-111111111111",
+      "code": "A-0101",
+      "display_name": "Apartment 101",
+      "unit_type": "apartment",
+      "storey_code": "L01",
+      "status": "active",
+      "address": "Alpha Tower, Level 1",
+      "area": 68.5,
+      "owner": "Synthetic Resident A",
+      "certificate_number": "SYN-A-0101",
+      "ownership_term": "Long-term"
+    },
+    {
+      "id": "a1111111-1111-4111-8111-111111111102",
+      "building_id": "11111111-1111-4111-8111-111111111111",
+      "code": "A-0201",
+      "display_name": "Apartment 201",
+      "unit_type": "apartment",
+      "storey_code": "L02",
+      "status": "active",
+      "address": "Alpha Tower, Level 2",
+      "area": 72.0,
+      "owner": "Synthetic Owner B",
+      "certificate_number": "SYN-A-0201",
+      "ownership_term": "Long-term"
+    },
+    {
+      "id": "a1111111-1111-4111-8111-111111111103",
+      "building_id": "11111111-1111-4111-8111-111111111111",
+      "code": "A-1204",
+      "display_name": "Apartment 1204",
+      "unit_type": "apartment",
+      "storey_code": "L12",
+      "status": "active",
+      "address": "Alpha Tower, Level 12",
+      "area": 93.4,
+      "owner": "Synthetic Owner C",
+      "certificate_number": "SYN-A-1204",
+      "ownership_term": "Long-term"
+    },
+    {
+      "id": "b2222222-2222-4222-8222-222222222201",
+      "building_id": "12222222-2222-4222-8222-222222222222",
+      "code": "E-LAB-01",
+      "display_name": "East Materials Lab",
+      "unit_type": "laboratory",
+      "storey_code": "E-GF",
+      "status": "active",
+      "address": "East Wing, Ground Floor",
+      "area": 145.0,
+      "owner": "Synthetic Facilities Group",
+      "certificate_number": "SYN-E-LAB-01",
+      "ownership_term": "Operational"
+    },
+    {
+      "id": "b2222222-2222-4222-8222-222222222202",
+      "building_id": "12222222-2222-4222-8222-222222222222",
+      "code": "W-MTG-14",
+      "display_name": "West Collaboration Room",
+      "unit_type": "meeting-room",
+      "storey_code": "W-L03",
+      "status": "active",
+      "address": "West Wing, Level 3",
+      "area": 48.0,
+      "owner": "Synthetic Facilities Group",
+      "certificate_number": "SYN-W-MTG-14",
+      "ownership_term": "Operational"
+    }
   ],
   "users": [
-    { "id": "90000000-0000-4000-8000-000000000001", "subject": "synthetic-admin", "status": "active" },
-    { "id": "90000000-0000-4000-8000-000000000002", "subject": "synthetic-operator", "status": "active" }
+    {
+      "id": "90000000-0000-4000-8000-000000000001",
+      "subject": "synthetic-admin",
+      "status": "active"
+    },
+    {
+      "id": "90000000-0000-4000-8000-000000000002",
+      "subject": "synthetic-operator",
+      "status": "active"
+    }
   ],
   "access": [
-    { "id": "91000000-0000-4000-8000-000000000001", "user_id": "90000000-0000-4000-8000-000000000001", "building_id": "11111111-1111-4111-8111-111111111111", "role": "facility_admin" },
-    { "id": "91000000-0000-4000-8000-000000000002", "user_id": "90000000-0000-4000-8000-000000000001", "building_id": "12222222-2222-4222-8222-222222222222", "role": "facility_admin" },
-    { "id": "91000000-0000-4000-8000-000000000003", "user_id": "90000000-0000-4000-8000-000000000002", "building_id": "11111111-1111-4111-8111-111111111111", "role": "operator" }
+    {
+      "id": "91000000-0000-4000-8000-000000000001",
+      "user_id": "90000000-0000-4000-8000-000000000001",
+      "building_id": "11111111-1111-4111-8111-111111111111",
+      "role": "facility_admin"
+    },
+    {
+      "id": "91000000-0000-4000-8000-000000000002",
+      "user_id": "90000000-0000-4000-8000-000000000001",
+      "building_id": "12222222-2222-4222-8222-222222222222",
+      "role": "facility_admin"
+    },
+    {
+      "id": "91000000-0000-4000-8000-000000000003",
+      "user_id": "90000000-0000-4000-8000-000000000002",
+      "building_id": "11111111-1111-4111-8111-111111111111",
+      "role": "operator"
+    }
   ],
   "people": [
-    { "id": "80000000-0000-4000-8000-000000000001", "organization_id": "00000000-0000-4000-8000-000000000001", "display_name": "Synthetic Resident A", "email": "resident.a@example.invalid", "phone": "+1-555-0100", "status": "active" },
-    { "id": "80000000-0000-4000-8000-000000000002", "organization_id": "00000000-0000-4000-8000-000000000001", "display_name": "Synthetic Lab Manager", "email": "lab.manager@example.invalid", "phone": null, "status": "active" }
+    {
+      "id": "80000000-0000-4000-8000-000000000001",
+      "organization_id": "00000000-0000-4000-8000-000000000001",
+      "display_name": "Synthetic Resident A",
+      "email": "resident.a@example.invalid",
+      "phone": "+1-555-0100",
+      "citizen_id": "SYN-CID-0001",
+      "date_of_birth": "1988-04-12",
+      "gender": "female",
+      "status": "active"
+    },
+    {
+      "id": "80000000-0000-4000-8000-000000000002",
+      "organization_id": "00000000-0000-4000-8000-000000000001",
+      "display_name": "Synthetic Lab Manager",
+      "email": "lab.manager@example.invalid",
+      "phone": null,
+      "citizen_id": "SYN-CID-0002",
+      "date_of_birth": "1979-11-03",
+      "gender": "non-disclosed",
+      "status": "active"
+    }
   ],
   "occupancies": [
-    { "id": "70000000-0000-4000-8000-000000000001", "building_id": "11111111-1111-4111-8111-111111111111", "unit_id": "a1111111-1111-4111-8111-111111111101", "person_id": "80000000-0000-4000-8000-000000000001", "relationship_type": "resident", "starts_at": "2026-01-01T00:00:00Z", "ends_at": null, "status": "active" },
-    { "id": "70000000-0000-4000-8000-000000000002", "building_id": "12222222-2222-4222-8222-222222222222", "unit_id": "b2222222-2222-4222-8222-222222222201", "person_id": "80000000-0000-4000-8000-000000000002", "relationship_type": "space-manager", "starts_at": "2026-02-01T00:00:00Z", "ends_at": null, "status": "active" }
+    {
+      "id": "70000000-0000-4000-8000-000000000001",
+      "building_id": "11111111-1111-4111-8111-111111111111",
+      "unit_id": "a1111111-1111-4111-8111-111111111101",
+      "person_id": "80000000-0000-4000-8000-000000000001",
+      "relationship_type": "household owner",
+      "residence_type": "permanent",
+      "starts_at": "2026-01-01T00:00:00Z",
+      "ends_at": null,
+      "status": "active"
+    },
+    {
+      "id": "70000000-0000-4000-8000-000000000002",
+      "building_id": "12222222-2222-4222-8222-222222222222",
+      "unit_id": "b2222222-2222-4222-8222-222222222201",
+      "person_id": "80000000-0000-4000-8000-000000000002",
+      "relationship_type": "space manager",
+      "residence_type": "staff",
+      "starts_at": "2026-02-01T00:00:00Z",
+      "ends_at": null,
+      "status": "active"
+    }
   ]
 }

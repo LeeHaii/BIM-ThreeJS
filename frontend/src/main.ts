@@ -1,9 +1,17 @@
+import { buildingIdSchema, type BuildingId } from "@bim/shared";
 import { AppCoordinator } from "./app/app-coordinator.js";
 import { initialState } from "./app/app-state.js";
 import { createAppStore } from "./app/app-store.js";
 import { ApiClient } from "./infrastructure/api/api-client.js";
-import { renderApp } from "./ui/render-app.js";
+import { renderOperatorShell } from "./modules/operator-shell/render-operator-shell.js";
 import "./ui/styles.css";
+
+function routeBuildingId(): BuildingId | undefined {
+  const match = /^\/viewer\/([^/]+)\/?$/.exec(window.location.pathname);
+  if (match?.[1] === undefined) return undefined;
+  const parsed = buildingIdSchema.safeParse(match[1]);
+  return parsed.success ? parsed.data : undefined;
+}
 
 const root = document.querySelector<HTMLElement>("#app");
 if (root === null) throw new Error("Application root is missing");
@@ -16,9 +24,9 @@ const api = new ApiClient(
 );
 const store = createAppStore(initialState);
 const coordinator = new AppCoordinator(store, api);
-const disposeUi = renderApp(root, store, coordinator);
+const disposeUi = renderOperatorShell(root, store, coordinator);
 
-void coordinator.start().catch((error: unknown) => {
+void coordinator.start(routeBuildingId()).catch((error: unknown) => {
   const message =
     error instanceof Error ? error.message : "Application startup failed";
   store.dispatch({
@@ -28,11 +36,21 @@ void coordinator.start().catch((error: unknown) => {
   });
 });
 
+window.addEventListener("popstate", () => {
+  const buildingId = routeBuildingId();
+  if (
+    buildingId !== undefined &&
+    buildingId !== store.getState().building.selectedId
+  ) {
+    void coordinator.openBuilding(buildingId);
+  }
+});
+
 window.addEventListener(
   "pagehide",
   () => {
     coordinator.dispose();
-    disposeUi();
+    void disposeUi();
   },
   { once: true },
 );

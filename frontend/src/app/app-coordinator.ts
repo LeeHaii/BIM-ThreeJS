@@ -19,13 +19,16 @@ export class AppCoordinator {
     private readonly api: ApiClient,
   ) {}
 
-  public async start(): Promise<void> {
+  public async start(initialBuildingId?: BuildingId): Promise<void> {
     const controller = new AbortController();
     this.store.dispatch({ type: "CATALOG_LOADING" });
     const page = await this.api.listBuildings(controller.signal);
     this.store.dispatch({ type: "CATALOG_READY", buildings: page.items });
-    const first = page.items[0];
-    if (first !== undefined) await this.openBuilding(first.id);
+    const requested = page.items.find(
+      (building) => building.id === initialBuildingId,
+    );
+    const initial = requested ?? page.items[0];
+    if (initial !== undefined) await this.openBuilding(initial.id);
   }
 
   public async openBuilding(buildingId: BuildingId): Promise<void> {
@@ -39,7 +42,7 @@ export class AppCoordinator {
     try {
       const [detail, manifest, units] = await Promise.all([
         this.api.getBuilding(buildingId, controller.signal),
-        this.api.getActiveManifest(buildingId, controller.signal),
+        this.api.getActiveSceneManifest(buildingId, controller.signal),
         this.api.searchUnits(buildingId, "", controller.signal),
       ]);
       this.store.dispatch({

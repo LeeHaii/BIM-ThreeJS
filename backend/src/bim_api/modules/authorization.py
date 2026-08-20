@@ -17,7 +17,9 @@ class AuthorizationService:
     _person_fields = {
         "viewer": frozenset(),
         "operator": frozenset({"display_name"}),
-        "facility_admin": frozenset({"display_name", "email", "phone"}),
+        "facility_admin": frozenset(
+            {"display_name", "email", "phone", "citizen_id", "date_of_birth", "gender"}
+        ),
     }
 
     def resolve_actor(self, session: Session, actor_id: str | None) -> Actor:
