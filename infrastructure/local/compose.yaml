@@ -1,0 +1,14 @@
+services:
+  api:
+    build: ../../backend
+    environment:
+      BIM_ENVIRONMENT: development
+      BIM_ALLOW_DEV_AUTH: "true"
+      BIM_DATABASE_URL: sqlite:////data/bim.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - bim-data:/data
+
+volumes:
+  bim-data:

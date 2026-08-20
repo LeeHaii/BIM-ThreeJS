@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.venv
+.uv-cache
+.pytest_cache
+__pycache__
+*.db
+*.sqlite*
+pnpm-lock.yaml
+backend/uv.lock
+

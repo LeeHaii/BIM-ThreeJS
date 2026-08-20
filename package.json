@@ -1,0 +1,30 @@
+{
+  "name": "bim-operations-platform",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "backend:lint": "uv run --directory backend ruff check .",
+    "backend:test": "uv run --directory backend pytest",
+    "backend:sync": "uv sync --directory backend --dev",
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter @bim/frontend dev",
+    "format": "prettier --write .github docs frontend infrastructure model-pipeline shared backend/README.md database/README.md README.md eslint.config.js package.json pnpm-workspace.yaml tsconfig.base.json",
+    "format:check": "prettier --check .github docs frontend infrastructure model-pipeline shared backend/README.md database/README.md README.md eslint.config.js package.json pnpm-workspace.yaml tsconfig.base.json",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "verify": "pnpm typecheck && pnpm lint && pnpm backend:lint && pnpm test && pnpm build && pnpm backend:test"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.34.0",
+    "eslint": "9.34.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.2",
+    "typescript-eslint": "8.41.0",
+    "vitest": "3.2.4"
+  }
+}

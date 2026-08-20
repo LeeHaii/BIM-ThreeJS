@@ -1,0 +1,9 @@
+packages:
+  - frontend
+  - shared
+  - model-pipeline
+
+onlyBuiltDependencies:
+  - esbuild
+allowBuilds:
+  esbuild: true
