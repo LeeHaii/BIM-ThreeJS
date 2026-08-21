@@ -85,6 +85,10 @@ export type AppCommand =
       readonly message: string;
     }
   | {
+      readonly type: "BIM_ELEMENT_LOADING";
+      readonly generation: number;
+    }
+  | {
       readonly type: "SELECT_BIM_ELEMENT";
       readonly generation: number;
       readonly selection: ViewerPick;
@@ -136,6 +140,7 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
           touchNavigation: "orbit",
         },
         bimSelection: undefined,
+        bimInspection: { status: "idle" },
         units: {
           query: "",
           status: "loading",
@@ -256,12 +261,24 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
         viewer: { ...state.viewer, status: "error" },
         error: command.message,
       };
+    case "BIM_ELEMENT_LOADING":
+      if (!isCurrent(state, command.generation) || state.mode !== "bim")
+        return state;
+      return { ...state, bimInspection: { status: "loading" } };
     case "SELECT_BIM_ELEMENT":
       if (!isCurrent(state, command.generation) || state.mode !== "bim")
         return state;
-      return { ...state, bimSelection: command.selection };
+      return {
+        ...state,
+        bimSelection: command.selection,
+        bimInspection: { status: "ready" },
+      };
     case "CLEAR_BIM_SELECTION":
-      return { ...state, bimSelection: undefined };
+      return {
+        ...state,
+        bimSelection: undefined,
+        bimInspection: { status: "idle" },
+      };
     case "SET_LAYER_VISIBILITY":
       return {
         ...state,
@@ -284,6 +301,8 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
         ...state,
         mode: command.mode,
         bimSelection: command.mode === "bim" ? state.bimSelection : undefined,
+        bimInspection:
+          command.mode === "bim" ? state.bimInspection : { status: "idle" },
         units:
           command.mode === "units"
             ? state.units

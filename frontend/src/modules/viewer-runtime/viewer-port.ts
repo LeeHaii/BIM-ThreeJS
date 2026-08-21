@@ -2,6 +2,7 @@ import type {
   CameraPose,
   ElementRef,
   PropertyEntry,
+  PropertyGroup,
   SceneManifestV2,
 } from "@bim/shared";
 
@@ -17,8 +18,10 @@ export interface ViewerLayerState {
 export interface ViewerPick {
   readonly ref: ElementRef;
   readonly title: string;
+  readonly category?: string | undefined;
   readonly worldPosition: readonly [number, number, number];
   readonly properties: readonly PropertyEntry[];
+  readonly groups?: readonly PropertyGroup[] | undefined;
 }
 
 export interface OperatorViewerPort {

@@ -76,11 +76,42 @@ describe("application reducer", () => {
         worldPosition: [1, 2, 3] as const,
         properties: [],
       },
+      bimInspection: { status: "ready" as const },
     };
     const result = reduceAppState(bimState, {
       type: "ENTER_MODE",
       mode: "units",
     });
     expect(result.bimSelection).toBeUndefined();
+    expect(result.bimInspection.status).toBe("idle");
+  });
+
+  it("sets bimInspection to loading on BIM_ELEMENT_LOADING and ready on SELECT_BIM_ELEMENT", () => {
+    const bimState = {
+      ...initialState,
+      mode: "bim" as const,
+      generation: 1,
+    };
+    const loadingState = reduceAppState(bimState, {
+      type: "BIM_ELEMENT_LOADING",
+      generation: 1,
+    });
+    expect(loadingState.bimInspection.status).toBe("loading");
+
+    const readyState = reduceAppState(loadingState, {
+      type: "SELECT_BIM_ELEMENT",
+      generation: 1,
+      selection: {
+        ref: {
+          modelVersionId: "32222222-2222-4222-8222-222222222222" as never,
+          modelLocalId: 1042,
+        },
+        title: "Wall 1042",
+        worldPosition: [0, 0, 0] as const,
+        properties: [],
+      },
+    });
+    expect(readyState.bimInspection.status).toBe("ready");
+    expect(readyState.bimSelection?.title).toBe("Wall 1042");
   });
 });

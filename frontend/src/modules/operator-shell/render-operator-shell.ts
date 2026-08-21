@@ -5,6 +5,18 @@ import { renderBimPanel } from "../bim-inspection/render-bim-panel.js";
 import { renderHouseholdPanel } from "../units/render-household-panel.js";
 import { ViewerSessionController } from "../viewer-runtime/index.js";
 
+const ICONS = {
+  cube: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.12 6.4-8-4.5a2 2 0 0 0-2.24 0l-8 4.5A2 2 0 0 0 2 8.16v7.68a2 2 0 0 0 .88 1.76l8 4.5a2 2 0 0 0 2.24 0l8-4.5A2 2 0 0 0 22 15.84V8.16a2 2 0 0 0-.88-1.76Z"/><path d="m2.5 7.5 9.5 5.5 9.5-5.5"/><path d="M12 13v9"/></svg>`,
+  reset: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`,
+  bim: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>`,
+  households: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  layers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+  chevronDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+  chevronLeft: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+  hand: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>`,
+  settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+};
+
 function requiredElement<T extends Element>(
   root: ParentNode,
   selector: string,
@@ -25,8 +37,9 @@ function localize(
 }
 
 function formatBytes(loaded: number, total: number): string {
-  if (total === 0) return "Preparing viewer";
-  return `${String(Math.round((loaded / total) * 100))}% · ${(loaded / 1_000_000).toFixed(1)} / ${(total / 1_000_000).toFixed(1)} MB`;
+  if (total === 0) return "Preparing 3D Engine";
+  const pct = Math.round((loaded / total) * 100);
+  return `${String(pct)}% · ${(loaded / 1_000_000).toFixed(1)} / ${(total / 1_000_000).toFixed(1)} MB`;
 }
 
 function setButtonLabel(button: HTMLButtonElement, label: string): void {
@@ -42,30 +55,74 @@ export function renderOperatorShell(
   root.innerHTML = `
     <div class="operator-shell" data-mode="overview">
       <aside class="left-panel ui-surface" aria-label="Mode panel">
-        <div class="brand-rail" aria-label="BIM Atlas"><span>B</span><small>ATLAS</small></div>
+        <div class="brand-rail" aria-label="BIM Atlas">
+          <div class="brand-logo-badge" title="BIM Atlas">${ICONS.cube}</div>
+          <span class="brand-rail-text">ATLAS</span>
+          <div class="brand-rail-indicator"></div>
+        </div>
         <div class="left-panel-body">
-          <button class="collapse-button" type="button" aria-label="Collapse panel">‹</button>
+          <button class="collapse-button" type="button" aria-label="Collapse panel">${ICONS.chevronLeft}</button>
           <div class="mode-panel-content"></div>
         </div>
       </aside>
       <header class="upper-panel ui-surface">
         <div class="primary-actions">
-          <button type="button" data-action="reset"><span class="action-icon">⌂</span><span>Reset view</span></button>
-          <button type="button" data-action="bim"><span class="action-icon">▦</span><span>BIM structure</span></button>
-          <button type="button" data-action="units"><span class="action-icon">⌘</span><span>Households</span></button>
+          <button class="nav-pill-button" type="button" data-action="reset">
+            <span class="action-icon">${ICONS.reset}</span>
+            <span>Reset view</span>
+          </button>
+          <button class="nav-pill-button" type="button" data-action="bim">
+            <span class="action-icon">${ICONS.bim}</span>
+            <span>BIM structure</span>
+          </button>
+          <button class="nav-pill-button" type="button" data-action="units">
+            <span class="action-icon">${ICONS.households}</span>
+            <span>Households</span>
+          </button>
         </div>
         <div class="viewer-utilities">
-          <select class="named-view-select" aria-label="Named camera view"></select>
-          <details class="layer-menu"><summary>Layers</summary><div class="layer-menu-content"></div></details>
-          <button class="touch-mode-button" type="button" hidden></button>
-          <select class="building-select" aria-label="Switch building"></select>
+          <div class="custom-select-wrapper">
+            <select class="modern-select named-view-select" aria-label="Named camera view"></select>
+            <span class="select-chevron">${ICONS.chevronDown}</span>
+          </div>
+          <details class="layer-menu">
+            <summary>
+              <span class="action-icon">${ICONS.layers}</span>
+              <span>Layers</span>
+              <span class="select-chevron" style="position: static; margin-left: 2px;">${ICONS.chevronDown}</span>
+            </summary>
+            <div class="layer-menu-content"></div>
+          </details>
+          <button class="nav-pill-button touch-mode-button" type="button" hidden>
+            <span class="action-icon">${ICONS.hand}</span>
+            <span>Touch Mode</span>
+          </button>
+          <div class="custom-select-wrapper">
+            <select class="modern-select building-select" aria-label="Switch building"></select>
+            <span class="select-chevron">${ICONS.chevronDown}</span>
+          </div>
+          <a class="nav-pill-button admin-nav-link" href="/admin" title="Open Admin Console" style="text-decoration: none;">
+            <span class="action-icon">${ICONS.settings}</span>
+            <span>Admin</span>
+          </a>
         </div>
       </header>
       <main class="viewport-area">
         <div class="viewer-canvas-host" aria-label="Three-dimensional building viewport"></div>
-        <div class="viewer-progress" role="status"></div>
-        <div class="viewport-hint">Right drag orbit · Shift + right drag vertical · Wheel zoom · Left click inspect</div>
-        <div class="development-banner">Development fixture · real .frag + GLB · synthetic operations data</div>
+        <div class="viewer-progress" role="status">
+          <div class="viewer-progress-spinner"></div>
+          <span class="viewer-progress-text"></span>
+        </div>
+        <div class="viewport-hint">
+          <span class="hint-badge">Right Drag</span> Orbit
+          <span class="hint-badge">Shift + Drag</span> Pan
+          <span class="hint-badge">Wheel</span> Zoom
+          <span class="hint-badge">Click</span> Inspect
+        </div>
+        <div class="development-banner">
+          <span class="dev-indicator-dot"></span>
+          <span>Development Fixture · Real .frag + GLB</span>
+        </div>
       </main>
       <div class="error-toast" role="alert" hidden></div>
     </div>`;
@@ -73,11 +130,6 @@ export function renderOperatorShell(
   const shell = requiredElement<HTMLElement>(
     root,
     ".operator-shell",
-    HTMLElement,
-  );
-  const leftBody = requiredElement<HTMLElement>(
-    root,
-    ".left-panel-body",
     HTMLElement,
   );
   const panelContent = requiredElement<HTMLElement>(
@@ -98,6 +150,11 @@ export function renderOperatorShell(
   const progress = requiredElement<HTMLElement>(
     root,
     ".viewer-progress",
+    HTMLElement,
+  );
+  const progressText = requiredElement<HTMLElement>(
+    progress,
+    ".viewer-progress-text",
     HTMLElement,
   );
   const errorToast = requiredElement<HTMLElement>(
@@ -164,8 +221,14 @@ export function renderOperatorShell(
     if (distance <= 4) void viewer.selectAt(event.clientX, event.clientY);
   });
   resetButton.addEventListener("click", () => void viewer.resetCamera());
-  bimButton.addEventListener("click", () => void viewer.setMode("bim"));
-  unitsButton.addEventListener("click", () => void viewer.setMode("units"));
+  bimButton.addEventListener("click", () => {
+    const current = store.getState().mode;
+    void viewer.setMode(current === "bim" ? "overview" : "bim");
+  });
+  unitsButton.addEventListener("click", () => {
+    const current = store.getState().mode;
+    void viewer.setMode(current === "units" ? "overview" : "units");
+  });
   collapseButton.addEventListener(
     "click",
     () => void viewer.setMode("overview"),
@@ -200,18 +263,20 @@ export function renderOperatorShell(
     const modePanel = manifest?.viewerUi.modePanels.find(
       (panel) => panel.mode === state.mode,
     );
-    const leftWidth =
-      state.mode === "overview"
-        ? (manifest?.viewerUi.collapsedLeftWidth ?? 35)
-        : (modePanel?.width ?? 280);
-    const upperHeight = manifest?.viewerUi.upperPanelHeight ?? 34;
-    shell.style.setProperty("--left-width", `${String(leftWidth)}px`);
+    const popupWidth =
+      state.mode === "units"
+        ? Math.max(modePanel?.width ?? 720, 720)
+        : Math.max(modePanel?.width ?? 420, 420);
+    const upperHeight = manifest?.viewerUi.upperPanelHeight ?? 48;
+    shell.style.setProperty("--panel-popup-width", `${String(popupWidth)}px`);
     shell.style.setProperty("--upper-height", `${String(upperHeight)}px`);
     shell.dataset.mode = state.mode;
-    leftBody.hidden = state.mode === "overview";
-    collapseButton.textContent = localize(
-      manifest?.viewerUi.labels.collapse ?? { en: "Collapse" },
-      locale,
+    collapseButton.setAttribute(
+      "aria-label",
+      localize(
+        manifest?.viewerUi.labels.collapse ?? { en: "Collapse panel" },
+        locale,
+      ),
     );
     resetButton.dataset.active = "false";
     bimButton.dataset.active = String(state.mode === "bim");
@@ -257,30 +322,46 @@ export function renderOperatorShell(
         return option;
       }),
     );
-    namedViewSelect.hidden = (manifest?.settings.namedViews.length ?? 0) === 0;
+    const namedViewWrapper = namedViewSelect.parentElement;
+    if (namedViewWrapper instanceof HTMLElement) {
+      namedViewWrapper.hidden =
+        (manifest?.settings.namedViews.length ?? 0) === 0;
+    }
     layerContent.replaceChildren(
       ...state.viewer.layers.map((layer) => {
         const label = document.createElement("label");
+        label.className = "layer-item-label";
+        const toggleControl = document.createElement("div");
+        toggleControl.className = "layer-toggle-control";
         const input = document.createElement("input");
         input.type = "checkbox";
+        input.className = "layer-checkbox";
         input.checked = layer.visible;
         input.disabled = layer.status !== "ready";
         input.addEventListener(
           "change",
           () => void viewer.setLayerVisibility(layer.id, input.checked),
         );
-        const text = document.createElement("span");
-        text.textContent = `${layer.name} · ${layer.status}`;
-        label.append(input, text);
+        const nameText = document.createElement("span");
+        nameText.textContent = layer.name;
+        toggleControl.append(input, nameText);
+
+        const statusBadge = document.createElement("span");
+        statusBadge.className = "layer-status-badge";
+        statusBadge.dataset.status = layer.status;
+        statusBadge.textContent = layer.status;
+        label.append(toggleControl, statusBadge);
         return label;
       }),
     );
     touchButton.hidden =
       !touchCapable || manifest?.viewerUi.touchNavigation.enabled !== true;
-    touchButton.textContent =
+    setButtonLabel(
+      touchButton,
       state.viewer.touchNavigation === "orbit"
         ? "Touch: orbit"
-        : "Touch: vertical";
+        : "Touch: vertical",
+    );
 
     if (state.mode === "bim") {
       renderBimPanel(panelContent, state);
@@ -290,13 +371,11 @@ export function renderOperatorShell(
         state,
         (unitId) => void coordinator.selectUnit(unitId),
       );
-    } else {
-      panelContent.replaceChildren();
     }
 
     progress.hidden = state.viewer.status === "ready";
     progress.dataset.status = state.viewer.status;
-    progress.textContent =
+    progressText.textContent =
       state.viewer.status === "error"
         ? "Viewer asset unavailable"
         : formatBytes(state.viewer.loadedBytes, state.viewer.totalBytes);

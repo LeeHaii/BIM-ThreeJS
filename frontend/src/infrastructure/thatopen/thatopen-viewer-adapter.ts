@@ -3,6 +3,7 @@ import * as FRAGS from "@thatopen/fragments";
 import type {
   CameraPose,
   PropertyEntry,
+  PropertyGroup,
   SceneLayerManifest,
   SceneManifestV2,
 } from "@bim/shared";
@@ -38,20 +39,269 @@ function propertyValue(
   ) {
     return value;
   }
+  if (typeof value === "object" && "value" in value) {
+    return propertyValue((value as { value: unknown }).value);
+  }
   return undefined;
 }
 
-function itemProperties(
-  item: FRAGS.ItemData | undefined,
-): readonly PropertyEntry[] {
-  if (item === undefined) return [];
-  const result: PropertyEntry[] = [];
+function cleanCategoryName(rawCategory: string | undefined): string | undefined {
+  if (rawCategory === undefined || rawCategory.length === 0) return undefined;
+  const trimmed = rawCategory.trim();
+  if (trimmed.toUpperCase().startsWith("IFC")) {
+    const rest = trimmed.slice(3);
+    return `Ifc${rest}`;
+  }
+  return trimmed;
+}
+
+interface ExtractedProperties {
+  readonly properties: readonly PropertyEntry[];
+  readonly groups: readonly PropertyGroup[];
+  readonly category?: string | undefined;
+}
+
+function extractAllPropertiesAndGroups(
+  item: Record<string, unknown> | undefined,
+): ExtractedProperties {
+  if (item === undefined) {
+    return { properties: [], groups: [] };
+  }
+
+  const allFlatProps: PropertyEntry[] = [];
+  const groupsMap = new Map<string, { label: string; entries: PropertyEntry[] }>();
+
+  function getOrCreateGroup(key: string, label: string) {
+    let group = groupsMap.get(key);
+    if (!group) {
+      group = { label, entries: [] };
+      groupsMap.set(key, group);
+    }
+    return group;
+  }
+
+  // 1. Category
+  const catObj = item._category ?? item.category;
+  const rawCat = propertyValue(catObj);
+  const category =
+    typeof rawCat === "string" ? cleanCategoryName(rawCat) : undefined;
+
+  // 2. Attributes & Identity
+  const identityGroup = getOrCreateGroup("identity", "Attributes & Identity");
+
   for (const [key, raw] of Object.entries(item)) {
     if (Array.isArray(raw)) continue;
-    const value = propertyValue(raw.value);
-    if (value !== undefined) result.push({ key, value });
+    if (
+      key.startsWith("_") &&
+      key !== "_guid" &&
+      key !== "_localId" &&
+      key !== "_category"
+    ) {
+      continue;
+    }
+    const val = propertyValue(raw);
+    if (val !== undefined) {
+      const displayKey =
+        key === "_guid" ? "GlobalId" : key === "_localId" ? "ExpressID" : key;
+      const entry: PropertyEntry = { key: displayKey, value: val };
+      identityGroup.entries.push(entry);
+      allFlatProps.push(entry);
+    }
   }
-  return result;
+
+  // Helper to extract properties from a PropertySet / QuantitySet / Dictionary
+  function processPropertySet(
+    psetObj: Record<string, unknown>,
+    defaultGroupName = "Property Set",
+  ): void {
+    const nameVal = psetObj.Name ?? psetObj.name;
+    const rawPsetName = propertyValue(nameVal);
+    const psetName =
+      typeof rawPsetName === "string" && rawPsetName.trim().length > 0
+        ? rawPsetName.trim()
+        : defaultGroupName;
+    const groupKey = `pset_${psetName.toLowerCase().replace(/[^a-z0-9]/g, "_")}`;
+    const group = getOrCreateGroup(groupKey, psetName);
+
+    const rawPropsList =
+      psetObj.HasProperties ??
+      psetObj.hasProperties ??
+      psetObj.Quantities ??
+      psetObj.quantities ??
+      psetObj.Properties ??
+      psetObj.properties;
+
+    if (Array.isArray(rawPropsList)) {
+      for (const propItem of rawPropsList) {
+        if (typeof propItem !== "object" || propItem === null) continue;
+        const propRecord = propItem as Record<string, unknown>;
+        const propKeyRaw = propertyValue(
+          propRecord.Name ?? propRecord.name ?? propRecord.key,
+        );
+        if (typeof propKeyRaw !== "string" || propKeyRaw.trim().length === 0) {
+          continue;
+        }
+        const propKey = propKeyRaw.trim();
+
+        const propVal = propertyValue(
+          propRecord.NominalValue ??
+            propRecord.nominalValue ??
+            propRecord.LengthValue ??
+            propRecord.AreaValue ??
+            propRecord.VolumeValue ??
+            propRecord.CountValue ??
+            propRecord.Value ??
+            propRecord.value,
+        );
+
+        if (propVal !== undefined) {
+          const rawUnit = propertyValue(propRecord.Unit ?? propRecord.unit);
+          const unit = typeof rawUnit === "string" ? rawUnit : undefined;
+          const entry: PropertyEntry = {
+            key: propKey,
+            value: propVal,
+            unit,
+          };
+          group.entries.push(entry);
+          allFlatProps.push(entry);
+        }
+      }
+    } else {
+      for (const [k, v] of Object.entries(psetObj)) {
+        if (Array.isArray(v) || k.startsWith("_") || k === "Name" || k === "name") {
+          continue;
+        }
+        const scalarVal = propertyValue(v);
+        if (scalarVal !== undefined) {
+          const entry: PropertyEntry = { key: k, value: scalarVal };
+          group.entries.push(entry);
+          allFlatProps.push(entry);
+        }
+      }
+    }
+  }
+
+  // 3. Property Sets (IsDefinedBy)
+  if (Array.isArray(item.IsDefinedBy)) {
+    for (const relItem of item.IsDefinedBy) {
+      if (typeof relItem === "object" && relItem !== null) {
+        processPropertySet(relItem as Record<string, unknown>, "Property Set");
+      }
+    }
+  }
+
+  // 4. Type Properties (IsTypedBy)
+  if (Array.isArray(item.IsTypedBy)) {
+    const typeGroup = getOrCreateGroup("type_properties", "Type Properties");
+    for (const typeItem of item.IsTypedBy) {
+      if (typeof typeItem !== "object" || typeItem === null) continue;
+      const typeRecord = typeItem as Record<string, unknown>;
+      for (const [k, v] of Object.entries(typeRecord)) {
+        if (Array.isArray(v)) {
+          if (k === "HasPropertySets" || k === "IsDefinedBy") {
+            for (const pset of v) {
+              if (typeof pset === "object" && pset !== null) {
+                processPropertySet(
+                  pset as Record<string, unknown>,
+                  "Type Property Set",
+                );
+              }
+            }
+          }
+        } else if (!k.startsWith("_")) {
+          const val = propertyValue(v);
+          if (val !== undefined) {
+            const entry: PropertyEntry = { key: `Type ${k}`, value: val };
+            typeGroup.entries.push(entry);
+            allFlatProps.push(entry);
+          }
+        }
+      }
+    }
+  }
+
+  // 5. Spatial Structure (ContainedInStructure)
+  if (Array.isArray(item.ContainedInStructure)) {
+    const spatialGroup = getOrCreateGroup("spatial", "Spatial Location");
+    for (const spatialItem of item.ContainedInStructure) {
+      if (typeof spatialItem !== "object" || spatialItem === null) continue;
+      const spatialRecord = spatialItem as Record<string, unknown>;
+      const cat = propertyValue(spatialRecord._category);
+      const name = propertyValue(spatialRecord.Name ?? spatialRecord.name);
+      const longName = propertyValue(spatialRecord.LongName);
+      const elevation = propertyValue(spatialRecord.Elevation);
+
+      const catStr = typeof cat === "string" ? cat : undefined;
+      const label = cleanCategoryName(catStr) ?? "Spatial Container";
+      if (name !== undefined) {
+        spatialGroup.entries.push({ key: `${label} Name`, value: name });
+        allFlatProps.push({ key: `${label} Name`, value: name });
+      }
+      if (longName !== undefined) {
+        spatialGroup.entries.push({ key: `${label} Long Name`, value: longName });
+        allFlatProps.push({ key: `${label} Long Name`, value: longName });
+      }
+      if (elevation !== undefined) {
+        spatialGroup.entries.push({
+          key: `${label} Elevation`,
+          value: elevation,
+          unit: "m",
+        });
+        allFlatProps.push({
+          key: `${label} Elevation`,
+          value: elevation,
+          unit: "m",
+        });
+      }
+    }
+  }
+
+  // 6. Materials (HasAssociations)
+  if (Array.isArray(item.HasAssociations)) {
+    const matGroup = getOrCreateGroup("materials", "Materials & Finishes");
+    for (const matItem of item.HasAssociations) {
+      if (typeof matItem !== "object" || matItem === null) continue;
+      const matRecord = matItem as Record<string, unknown>;
+      const name = propertyValue(matRecord.Name ?? matRecord.name);
+      if (name !== undefined) {
+        matGroup.entries.push({ key: "Material", value: name });
+        allFlatProps.push({ key: "Material", value: name });
+      }
+      for (const [k, v] of Object.entries(matRecord)) {
+        if (
+          Array.isArray(v) ||
+          k.startsWith("_") ||
+          k === "Name" ||
+          k === "name"
+        ) {
+          continue;
+        }
+        const val = propertyValue(v);
+        if (val !== undefined) {
+          matGroup.entries.push({ key: k, value: val });
+          allFlatProps.push({ key: k, value: val });
+        }
+      }
+    }
+  }
+
+  // Format groups array (filter out empty groups)
+  const groups: PropertyGroup[] = [];
+  for (const [key, group] of groupsMap.entries()) {
+    if (group.entries.length > 0) {
+      groups.push({
+        key,
+        label: group.label,
+        entries: group.entries,
+      });
+    }
+  }
+
+  return {
+    properties: allFlatProps,
+    groups,
+    category,
+  };
 }
 
 function propertyNamed(
@@ -108,17 +358,9 @@ async function verifyRuntimeAsset(
     );
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
   if (contentType.includes("text/html"))
-    throw new Error(`${expected} runtime asset resolved to HTML`);
-  if (expected === "worker" && !contentType.includes("javascript")) {
     throw new Error(
-      `Fragments worker has invalid MIME type: ${contentType || "missing"}`,
+      `${expected} runtime asset resolved to HTML instead of binary/script`,
     );
-  }
-  if (expected === "wasm" && !contentType.includes("wasm")) {
-    throw new Error(
-      `web-ifc WASM has invalid MIME type: ${contentType || "missing"}`,
-    );
-  }
 }
 
 export class ThatOpenViewerAdapter implements OperatorViewerPort {
@@ -126,25 +368,29 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
   private world:
     | OBC.SimpleWorld<OBC.SimpleScene, OBC.SimpleCamera, OBC.SimpleRenderer>
     | undefined;
+
   private fragments: OBC.FragmentsManager | undefined;
-  private manifest: SceneManifestV2 | undefined;
-  private readonly contextLayers = new Map<string, THREE.Object3D>();
-  private readonly fragmentLayerIds = new Set<string>();
   private defaultCamera: CameraPose | undefined;
-  private selected:
-    | { readonly modelId: string; readonly localId: number }
-    | undefined;
+  private manifest: SceneManifestV2 | undefined;
+  private readonly contextLayers = new Map<string, THREE.Group>();
+  private readonly fragmentLayerIds = new Set<string>();
+  private selected: { modelId: string; localId: number } | undefined;
 
   public async initialize(
     container: HTMLElement,
     manifest: SceneManifestV2,
   ): Promise<void> {
-    await Promise.all([
-      verifyRuntimeAsset(manifest.runtimeCompatibility.workerUrl, "worker"),
-      verifyRuntimeAsset(manifest.runtimeCompatibility.wasmUrl, "wasm"),
-    ]);
     this.manifest = manifest;
     this.defaultCamera = manifest.settings.defaultCamera;
+    await verifyRuntimeAsset(
+      manifest.runtimeCompatibility.workerUrl,
+      "worker",
+    );
+    await verifyRuntimeAsset(
+      manifest.runtimeCompatibility.wasmUrl,
+      "wasm",
+    );
+
     const components = new OBC.Components();
     const world = components
       .get(OBC.Worlds)
@@ -303,9 +549,18 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     this.selected = { modelId, localId: result.localId };
     const [data] = await result.fragments.getItemsData([result.localId], {
       attributesDefault: true,
-      relations: { IsDefinedBy: { attributes: true, relations: true } },
+      relations: {
+        IsDefinedBy: { attributes: true, relations: true },
+        IsTypedBy: { attributes: true, relations: true },
+        HasAssociations: { attributes: true, relations: true },
+        ContainedInStructure: { attributes: true, relations: true },
+        HasAssignments: { attributes: true, relations: true },
+        DefinesType: { attributes: true, relations: true },
+      },
     });
-    const properties = itemProperties(data);
+    const extracted = extractAllPropertiesAndGroups(
+      data as Record<string, unknown> | undefined,
+    );
     const manifestLayer = this.manifest?.layers.find(
       (layer) => layer.id === modelId,
     );
@@ -315,13 +570,17 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
       ref: {
         modelVersionId: versionId,
         modelLocalId: result.localId,
-        globalId: propertyNamed(properties, "GlobalId"),
+        globalId: propertyNamed(extracted.properties, "GlobalId"),
       },
       title:
-        propertyNamed(properties, "Name", "LongName", "ObjectType") ??
-        `Element ${String(result.localId)}`,
+        propertyNamed(extracted.properties, "Name", "LongName", "ObjectType") ??
+        (extracted.category !== undefined
+          ? `${extracted.category} (${String(result.localId)})`
+          : `Element ${String(result.localId)}`),
+      category: extracted.category,
       worldPosition: [result.point.x, result.point.y, result.point.z],
-      properties,
+      properties: extracted.properties,
+      groups: extracted.groups,
     };
   }
 

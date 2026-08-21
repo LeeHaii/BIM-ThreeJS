@@ -80,17 +80,26 @@ export class ViewerSessionController {
   public async selectAt(clientX: number, clientY: number): Promise<void> {
     const state = this.store.getState();
     if (state.mode !== "bim" || state.viewer.status !== "ready") return;
-    const selection = await this.adapter?.pick(clientX, clientY);
-    if (selection === undefined) {
+    this.store.dispatch({
+      type: "BIM_ELEMENT_LOADING",
+      generation: state.generation,
+    });
+    try {
+      const selection = await this.adapter?.pick(clientX, clientY);
+      if (selection === undefined) {
+        await this.adapter?.clearSelection();
+        this.store.dispatch({ type: "CLEAR_BIM_SELECTION" });
+        return;
+      }
+      this.store.dispatch({
+        type: "SELECT_BIM_ELEMENT",
+        generation: state.generation,
+        selection,
+      });
+    } catch {
       await this.adapter?.clearSelection();
       this.store.dispatch({ type: "CLEAR_BIM_SELECTION" });
-      return;
     }
-    this.store.dispatch({
-      type: "SELECT_BIM_ELEMENT",
-      generation: state.generation,
-      selection,
-    });
   }
 
   public resetCamera(): Promise<void> {

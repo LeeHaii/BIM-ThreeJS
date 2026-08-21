@@ -46,6 +46,14 @@ export const buildingDetailSchema = buildingSummarySchema.extend({
   activeModelVersionId: modelVersionIdSchema.optional(),
 });
 
+export const createBuildingInputSchema = z.object({
+  code: nonEmptyString.max(60),
+  name: nonEmptyString.max(200),
+  timezone: nonEmptyString.default("UTC"),
+  locale: nonEmptyString.default("en"),
+});
+export type CreateBuildingInput = z.infer<typeof createBuildingInputSchema>;
+
 export const unitSummarySchema = z.object({
   id: unitIdSchema,
   buildingId: buildingIdSchema,
@@ -61,6 +69,34 @@ export const unitSummarySchema = z.object({
   ownershipTerm: nonEmptyString.optional(),
 });
 
+export const createUnitInputSchema = z.object({
+  code: nonEmptyString.max(60),
+  displayName: nonEmptyString.max(200),
+  unitType: nonEmptyString.default("apartment"),
+  storeyCode: nonEmptyString.default("L01"),
+  status: z.enum(["active", "inactive"]).default("active"),
+  address: z.string().optional(),
+  area: z.number().nonnegative().optional(),
+  owner: z.string().optional(),
+  certificateNumber: z.string().optional(),
+  ownershipTerm: z.string().optional(),
+});
+export type CreateUnitInput = z.infer<typeof createUnitInputSchema>;
+
+export const updateUnitInputSchema = z.object({
+  code: nonEmptyString.max(60).optional(),
+  displayName: nonEmptyString.max(200).optional(),
+  unitType: nonEmptyString.optional(),
+  storeyCode: nonEmptyString.optional(),
+  status: z.enum(["active", "inactive"]).optional(),
+  address: z.string().nullable().optional(),
+  area: z.number().nonnegative().nullable().optional(),
+  owner: z.string().nullable().optional(),
+  certificateNumber: z.string().nullable().optional(),
+  ownershipTerm: z.string().nullable().optional(),
+});
+export type UpdateUnitInput = z.infer<typeof updateUnitInputSchema>;
+
 export const occupancyViewSchema = z.object({
   relationshipType: nonEmptyString,
   displayName: nonEmptyString.optional(),
@@ -74,6 +110,54 @@ export const occupancyViewSchema = z.object({
   startsAt: z.iso.datetime(),
   endsAt: z.iso.datetime().optional(),
 });
+
+export const adminOccupancySchema = z.object({
+  id: nonEmptyString,
+  unitId: unitIdSchema,
+  personId: nonEmptyString,
+  relationshipType: nonEmptyString,
+  displayName: nonEmptyString.optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  citizenId: z.string().optional(),
+  dateOfBirth: z.string().optional(),
+  gender: z.string().optional(),
+  residenceType: z.string().optional(),
+  status: z.string().default("active"),
+  startsAt: z.string(),
+  endsAt: z.string().optional(),
+});
+export type AdminOccupancy = z.infer<typeof adminOccupancySchema>;
+
+export const createOccupancyInputSchema = z.object({
+  displayName: nonEmptyString,
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  citizenId: z.string().optional(),
+  dateOfBirth: z.string().optional(),
+  gender: z.string().optional(),
+  relationshipType: nonEmptyString.default("owner"),
+  residenceType: z.string().default("permanent"),
+  status: z.string().default("active"),
+  startsAt: z.string().optional(),
+  endsAt: z.string().optional(),
+});
+export type CreateOccupancyInput = z.infer<typeof createOccupancyInputSchema>;
+
+export const updateOccupancyInputSchema = z.object({
+  displayName: nonEmptyString.optional(),
+  email: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  citizenId: z.string().nullable().optional(),
+  dateOfBirth: z.string().nullable().optional(),
+  gender: z.string().nullable().optional(),
+  relationshipType: nonEmptyString.optional(),
+  residenceType: z.string().nullable().optional(),
+  status: z.string().optional(),
+  startsAt: z.string().optional(),
+  endsAt: z.string().nullable().optional(),
+});
+export type UpdateOccupancyInput = z.infer<typeof updateOccupancyInputSchema>;
 
 const assetReferenceSchema = z.object({
   assetId: nonEmptyString,

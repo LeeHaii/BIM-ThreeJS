@@ -37,6 +37,9 @@ export interface AppState {
     readonly touchNavigation: "orbit" | "vertical";
   };
   readonly bimSelection: ViewerPick | undefined;
+  readonly bimInspection: {
+    readonly status: LoadStatus;
+  };
   readonly units: {
     readonly query: string;
     readonly status: LoadStatus;
@@ -64,6 +67,7 @@ export const initialState: AppState = {
     touchNavigation: "orbit",
   },
   bimSelection: undefined,
+  bimInspection: { status: "idle" },
   units: { query: "", status: "idle", items: [], selectedId: undefined },
   occupancies: { status: "idle", items: [] },
   mode: "overview",
