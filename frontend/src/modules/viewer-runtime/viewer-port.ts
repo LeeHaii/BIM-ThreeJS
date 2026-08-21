@@ -37,6 +37,9 @@ export interface OperatorViewerPort {
   ): Promise<readonly ViewerLayerState[]>;
   pick(clientX: number, clientY: number): Promise<ViewerPick | undefined>;
   clearSelection(): Promise<void>;
+  hover(clientX: number, clientY: number): Promise<void>;
+  clearHover(): Promise<void>;
+  setEnvironmentOpacity(opacity: number): void;
   setLayerVisibility(layerId: string, visible: boolean): Promise<void>;
   setCamera(pose: CameraPose, animate?: boolean): Promise<void>;
   resetCamera(): Promise<void>;

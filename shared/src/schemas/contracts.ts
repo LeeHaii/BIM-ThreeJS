@@ -99,16 +99,16 @@ export type UpdateUnitInput = z.infer<typeof updateUnitInputSchema>;
 
 export const occupancyViewSchema = z.object({
   relationshipType: nonEmptyString,
-  displayName: nonEmptyString.optional(),
-  email: z.email().optional(),
-  phone: nonEmptyString.optional(),
-  citizenId: nonEmptyString.optional(),
-  dateOfBirth: z.iso.date().optional(),
-  gender: nonEmptyString.optional(),
-  residenceType: nonEmptyString.optional(),
-  status: nonEmptyString.optional(),
-  startsAt: z.iso.datetime(),
-  endsAt: z.iso.datetime().optional(),
+  displayName: nonEmptyString.nullish().transform((v) => v ?? undefined),
+  email: z.string().nullish().transform((v) => v ?? undefined),
+  phone: nonEmptyString.nullish().transform((v) => v ?? undefined),
+  citizenId: nonEmptyString.nullish().transform((v) => v ?? undefined),
+  dateOfBirth: z.string().nullish().transform((v) => v ?? undefined),
+  gender: nonEmptyString.nullish().transform((v) => v ?? undefined),
+  residenceType: nonEmptyString.nullish().transform((v) => v ?? undefined),
+  status: nonEmptyString.nullish().transform((v) => v ?? undefined),
+  startsAt: z.string(),
+  endsAt: z.string().nullish().transform((v) => v ?? undefined),
 });
 
 export const adminOccupancySchema = z.object({
@@ -116,16 +116,16 @@ export const adminOccupancySchema = z.object({
   unitId: unitIdSchema,
   personId: nonEmptyString,
   relationshipType: nonEmptyString,
-  displayName: nonEmptyString.optional(),
-  email: z.string().optional(),
-  phone: z.string().optional(),
-  citizenId: z.string().optional(),
-  dateOfBirth: z.string().optional(),
-  gender: z.string().optional(),
-  residenceType: z.string().optional(),
+  displayName: nonEmptyString.nullish().transform((v) => v ?? undefined),
+  email: z.string().nullish().transform((v) => v ?? undefined),
+  phone: z.string().nullish().transform((v) => v ?? undefined),
+  citizenId: z.string().nullish().transform((v) => v ?? undefined),
+  dateOfBirth: z.string().nullish().transform((v) => v ?? undefined),
+  gender: z.string().nullish().transform((v) => v ?? undefined),
+  residenceType: z.string().nullish().transform((v) => v ?? undefined),
   status: z.string().default("active"),
   startsAt: z.string(),
-  endsAt: z.string().optional(),
+  endsAt: z.string().nullish().transform((v) => v ?? undefined),
 });
 export type AdminOccupancy = z.infer<typeof adminOccupancySchema>;
 

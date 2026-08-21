@@ -50,7 +50,7 @@ export function renderAdminConsole(
   let buildings: readonly BuildingSummary[] = [];
   let currentBuildingId: BuildingId | undefined = initialBuildingId;
   let currentBuilding: BuildingDetail | null = null;
-  let activeTab: "models" | "households" = "models";
+  let activeTab: "models" | "households" | "settings" = "models";
   let units: readonly UnitSummary[] = [];
   let unitSearchQuery = "";
   let activeSceneManifest: SceneManifestV2 | null = null;
@@ -61,6 +61,7 @@ export function renderAdminConsole(
 
   // Modals state
   let isNewProjectModalOpen = false;
+  let isDeleteProjectModalOpen = false;
   let editingUnit: UnitSummary | null = null;
   let isSpaceModalOpen = false;
   let unitToDelete: UnitSummary | null = null;
@@ -87,9 +88,21 @@ export function renderAdminConsole(
     try {
       const page = await api.listBuildings();
       buildings = page.items;
-      if (!currentBuildingId && buildings.length > 0) {
+      if (buildings.length === 0) {
+        currentBuildingId = undefined;
+        currentBuilding = null;
+        activeSceneManifest = null;
+        units = [];
+        window.history.replaceState(null, "", "/admin");
+        render();
+        return;
+      }
+
+      const exists = buildings.some((b) => b.id === currentBuildingId);
+      if (!exists) {
         currentBuildingId = buildings[0]?.id;
       }
+
       if (currentBuildingId) {
         await selectBuilding(currentBuildingId);
       } else {
@@ -105,6 +118,7 @@ export function renderAdminConsole(
 
   async function selectBuilding(id: BuildingId): Promise<void> {
     currentBuildingId = id;
+    window.history.replaceState(null, "", `/admin/${id}`);
     try {
       const [detail, manifestResult, unitsResult] = await Promise.allSettled([
         api.getBuilding(id),
@@ -257,11 +271,18 @@ export function renderAdminConsole(
                   </svg>
                   <span>Households & Managed Spaces (${String(units.length)})</span>
                 </button>
+                <button type="button" class="admin-tab ${activeTab === "settings" ? "active" : ""}" data-tab="settings">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span>Project Settings</span>
+                </button>
               </div>
 
               <!-- Tab Content -->
               <div class="admin-tab-body">
-                ${activeTab === "models" ? renderModelsTab() : renderHouseholdsTab()}
+                ${activeTab === "models" ? renderModelsTab() : activeTab === "households" ? renderHouseholdsTab() : renderSettingsTab()}
               </div>
             </div>
           `
@@ -277,6 +298,7 @@ export function renderAdminConsole(
 
     bindEvents();
     if (isNewProjectModalOpen) renderNewProjectModal();
+    if (isDeleteProjectModalOpen) renderDeleteProjectModal();
     if (isSpaceModalOpen) renderSpaceModal();
     if (unitToDelete) renderDeleteSpaceModal();
     if (selectedUnitForResidents) renderResidentModal();
@@ -540,6 +562,91 @@ export function renderAdminConsole(
     }
   }
 
+  function renderSettingsTab(): string {
+    if (!currentBuilding) {
+      return `
+        <div class="admin-empty-state">
+          <p>No project selected.</p>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="admin-card-grid">
+        <div class="admin-card">
+          <div class="admin-card-header">
+            <div>
+              <h3 class="admin-card-title">Project Profile & Configuration</h3>
+              <p class="admin-card-subtitle">General metadata and spatial registry details for ${escapeHtml(currentBuilding.name)}</p>
+            </div>
+            <span class="admin-badge font-mono">${escapeHtml(currentBuilding.code)}</span>
+          </div>
+          <div class="admin-card-content">
+            <div class="admin-meta-grid">
+              <div class="admin-meta-item">
+                <span class="admin-meta-label">Project Name</span>
+                <span class="admin-meta-value">${escapeHtml(currentBuilding.name)}</span>
+              </div>
+              <div class="admin-meta-item">
+                <span class="admin-meta-label">Project Code</span>
+                <span class="admin-meta-value font-mono font-bold">${escapeHtml(currentBuilding.code)}</span>
+              </div>
+              <div class="admin-meta-item">
+                <span class="admin-meta-label">Timezone</span>
+                <span class="admin-meta-value font-mono">${escapeHtml(currentBuilding.timezone)}</span>
+              </div>
+              <div class="admin-meta-item">
+                <span class="admin-meta-label">Locale</span>
+                <span class="admin-meta-value font-mono">${escapeHtml(currentBuilding.locale)}</span>
+              </div>
+              <div class="admin-meta-item">
+                <span class="admin-meta-label">Building ID</span>
+                <span class="admin-meta-value font-mono" style="font-size: 11px;">${escapeHtml(currentBuilding.id)}</span>
+              </div>
+              <div class="admin-meta-item">
+                <span class="admin-meta-label">Managed Spaces Count</span>
+                <span class="admin-meta-value font-mono">${String(units.length)} units registered</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-card danger-zone" style="border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.02);">
+          <div class="admin-card-header">
+            <div>
+              <h3 class="admin-card-title" style="color: var(--accent-danger); display: flex; align-items: center; gap: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <span>Danger Zone</span>
+              </h3>
+              <p class="admin-card-subtitle">Irreversible actions that permanently delete data and resources.</p>
+            </div>
+          </div>
+          <div class="admin-card-content">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <h4 style="font-size: 14px; font-weight: 600; color: var(--text-primary);">Delete this Building Project</h4>
+              <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
+                Once deleted, all 3D scene manifests, uploaded IFC fragments, GLTF environment models, managed apartments, and resident occupancies will be permanently destroyed.
+              </p>
+            </div>
+            <div style="padding-top: 8px;">
+              <button type="button" class="admin-btn admin-btn-danger btn-delete-project">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span>Delete Project</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   // New Project Modal
   function renderNewProjectModal(): void {
     const container = root.querySelector<HTMLElement>(".admin-modal-container");
@@ -585,6 +692,12 @@ export function renderAdminConsole(
     const form = container.querySelector<HTMLFormElement>(
       ".form-create-project",
     );
+
+    container
+      .querySelectorAll<HTMLButtonElement>(".btn-close-modal")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => closeAllModals());
+      });
     form?.addEventListener("submit", (e) => {
       e.preventDefault();
       void (async () => {
@@ -702,6 +815,12 @@ export function renderAdminConsole(
     `;
 
     const form = container.querySelector<HTMLFormElement>(".form-save-space");
+
+    container
+      .querySelectorAll<HTMLButtonElement>(".btn-close-modal")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => closeAllModals());
+      });
     form?.addEventListener("submit", (e) => {
       e.preventDefault();
       void (async () => {
@@ -780,6 +899,12 @@ export function renderAdminConsole(
     `;
 
     container
+      .querySelectorAll<HTMLButtonElement>(".btn-close-modal")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => closeAllModals());
+      });
+
+    container
       .querySelector(".btn-confirm-delete-space")
       ?.addEventListener("click", () => {
         void (async () => {
@@ -796,6 +921,109 @@ export function renderAdminConsole(
             showToast(msg, "error");
           }
         })();
+      });
+  }
+
+  // Delete Project Confirmation Modal
+  function renderDeleteProjectModal(): void {
+    if (!currentBuildingId || !currentBuilding) return;
+    const container = root.querySelector<HTMLElement>(".admin-modal-container");
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="admin-modal-backdrop">
+        <div class="admin-modal" role="dialog" aria-labelledby="modal-del-project-title">
+          <div class="admin-modal-header">
+            <h3 id="modal-del-project-title" class="admin-modal-title" style="color: var(--accent-danger); display: flex; align-items: center; gap: 8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              <span>Delete Building Project</span>
+            </h3>
+            <button type="button" class="admin-modal-close btn-close-modal">&times;</button>
+          </div>
+          <div class="admin-modal-body">
+            <p>Are you sure you want to permanently delete <strong>${escapeHtml(currentBuilding.name)}</strong> (<span class="font-mono">${escapeHtml(currentBuilding.code)}</span>)?</p>
+            
+            <div class="admin-callout danger" style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-md); padding: 14px;">
+              <h4 style="color: var(--accent-danger); font-size: 13px; font-weight: 600; margin-bottom: 6px;">Warning: This action is irreversible!</h4>
+              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">Deleting this project will permanently remove:</p>
+              <ul style="font-size: 12px; color: var(--text-secondary); margin-left: 18px; line-height: 1.6;">
+                <li>Active 3D Scene manifests and model versions</li>
+                <li>All managed spaces (${String(units.length)} units)</li>
+                <li>All resident profiles and occupancy records</li>
+                <li>User access permissions and configurations</li>
+              </ul>
+            </div>
+          </div>
+          <div class="admin-modal-footer">
+            <button type="button" class="admin-btn admin-btn-secondary btn-close-modal">Cancel</button>
+            <button type="button" class="admin-btn admin-btn-danger btn-confirm-delete-project">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span>Delete Project Permanently</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const confirmBtn = container.querySelector<HTMLButtonElement>(
+      ".btn-confirm-delete-project",
+    );
+    confirmBtn?.addEventListener("click", () => {
+      void (async () => {
+        if (!currentBuildingId || !currentBuilding) return;
+        const bName = currentBuilding.name;
+        const bId = currentBuildingId;
+
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = `
+          <svg class="admin-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="2" x2="12" y2="6"></line>
+            <line x1="12" y1="18" x2="12" y2="22"></line>
+            <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+            <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+            <line x1="2" y1="12" x2="6" y2="12"></line>
+            <line x1="18" y1="12" x2="22" y2="12"></line>
+            <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+            <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+          </svg>
+          <span>Deleting Project...</span>
+        `;
+
+        try {
+          await api.deleteBuilding(bId);
+          showToast(`Project "${bName}" deleted successfully.`, "success");
+          currentBuildingId = undefined;
+          currentBuilding = null;
+          isDeleteProjectModalOpen = false;
+          closeAllModals();
+          await loadInitialData();
+        } catch (err: unknown) {
+          const msg =
+            err instanceof Error ? err.message : "Failed to delete project";
+          showToast(msg, "error");
+          confirmBtn.disabled = false;
+          confirmBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>Delete Project Permanently</span>
+          `;
+        }
+      })();
+    });
+
+    container
+      .querySelectorAll<HTMLButtonElement>(".btn-close-modal")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => closeAllModals());
       });
   }
 
@@ -981,6 +1209,12 @@ export function renderAdminConsole(
     if (!container) return;
 
     container
+      .querySelectorAll<HTMLButtonElement>(".btn-close-modal")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => closeAllModals());
+      });
+
+    container
       .querySelector(".btn-toggle-add-resident")
       ?.addEventListener("click", () => {
         isAddResidentFormOpen = true;
@@ -1109,6 +1343,7 @@ export function renderAdminConsole(
 
   function closeAllModals(): void {
     isNewProjectModalOpen = false;
+    isDeleteProjectModalOpen = false;
     isSpaceModalOpen = false;
     editingUnit = null;
     unitToDelete = null;
@@ -1128,7 +1363,6 @@ export function renderAdminConsole(
       const val = selectEl.value;
       if (val) {
         void selectBuilding(val as BuildingId);
-        window.history.pushState(null, "", `/admin/${val}`);
       }
     });
 
@@ -1142,37 +1376,28 @@ export function renderAdminConsole(
         });
       });
 
-    // Delete project
+    // Delete project modal trigger (header and settings danger zone)
     root
-      .querySelector<HTMLButtonElement>(".btn-delete-project")
-      ?.addEventListener("click", () => {
-        void (async () => {
-          if (!currentBuildingId || !currentBuilding) return;
-          if (
-            !confirm(
-              `Are you sure you want to delete the entire project "${currentBuilding.name}" (${currentBuilding.code})?\nThis action cannot be undone.`,
-            )
-          ) {
+      .querySelectorAll<HTMLButtonElement>(".btn-delete-project")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (!currentBuildingId || !currentBuilding) {
+            showToast("No active project selected to delete", "error");
             return;
           }
-          try {
-            await api.deleteBuilding(currentBuildingId);
-            showToast(`Project "${currentBuilding.name}" deleted.`, "success");
-            currentBuildingId = undefined;
-            currentBuilding = null;
-            await loadInitialData();
-          } catch (err: unknown) {
-            const msg =
-              err instanceof Error ? err.message : "Failed to delete project";
-            showToast(msg, "error");
-          }
-        })();
+          isDeleteProjectModalOpen = true;
+          renderDeleteProjectModal();
+        });
       });
 
     // Tab switching
     root.querySelectorAll<HTMLButtonElement>(".admin-tab").forEach((tabBtn) => {
       tabBtn.addEventListener("click", () => {
-        const tab = tabBtn.dataset.tab as "models" | "households" | undefined;
+        const tab = tabBtn.dataset.tab as
+          | "models"
+          | "households"
+          | "settings"
+          | undefined;
         if (tab && tab !== activeTab) {
           activeTab = tab;
           render();
@@ -1329,7 +1554,21 @@ export function renderAdminConsole(
         });
       });
 
-    // Close Modals
+    // Close Modals (Delegation on modal container & direct buttons)
+    const modalContainer = root.querySelector<HTMLElement>(
+      ".admin-modal-container",
+    );
+    modalContainer?.addEventListener("click", (e) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (
+        target.classList.contains("admin-modal-backdrop") ||
+        target.closest(".btn-close-modal")
+      ) {
+        closeAllModals();
+      }
+    });
+
     root
       .querySelectorAll<HTMLButtonElement>(".btn-close-modal")
       .forEach((btn) => {
@@ -1337,10 +1576,18 @@ export function renderAdminConsole(
       });
   }
 
+  const onGlobalKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") {
+      closeAllModals();
+    }
+  };
+  window.addEventListener("keydown", onGlobalKeyDown);
+
   void loadInitialData();
 
   return () => {
     if (toastTimeout) window.clearTimeout(toastTimeout);
+    window.removeEventListener("keydown", onGlobalKeyDown);
     root.innerHTML = "";
   };
 }

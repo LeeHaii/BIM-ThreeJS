@@ -73,8 +73,30 @@ export class ViewerSessionController {
   }
 
   public async setMode(mode: "overview" | "bim" | "units"): Promise<void> {
-    if (mode !== "bim") await this.adapter?.clearSelection();
+    if (mode !== "bim") {
+      await this.adapter?.clearSelection();
+      await this.adapter?.clearHover();
+      this.adapter?.setEnvironmentOpacity(1.0);
+    } else {
+      this.adapter?.setEnvironmentOpacity(0.10);
+      this.store.dispatch({ type: "SET_ENVIRONMENT_OPACITY", opacity: 0.10 });
+    }
     this.store.dispatch({ type: "ENTER_MODE", mode });
+  }
+
+  public async hoverAt(clientX: number, clientY: number): Promise<void> {
+    const state = this.store.getState();
+    if (state.mode !== "bim" || state.viewer.status !== "ready") return;
+    await this.adapter?.hover(clientX, clientY);
+  }
+
+  public async clearHover(): Promise<void> {
+    await this.adapter?.clearHover();
+  }
+
+  public setEnvironmentOpacity(opacity: number): void {
+    this.adapter?.setEnvironmentOpacity(opacity);
+    this.store.dispatch({ type: "SET_ENVIRONMENT_OPACITY", opacity });
   }
 
   public async selectAt(clientX: number, clientY: number): Promise<void> {
@@ -131,6 +153,7 @@ export class ViewerSessionController {
     this.unsubscribe?.();
     this.resizeObserver?.disconnect();
     this.loadController?.abort();
+    await this.adapter?.clearHover();
     await this.adapter?.dispose();
     this.container.replaceChildren();
   }
