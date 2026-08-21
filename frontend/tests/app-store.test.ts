@@ -114,4 +114,24 @@ describe("application reducer", () => {
     expect(readyState.bimInspection.status).toBe("ready");
     expect(readyState.bimSelection?.title).toBe("Wall 1042");
   });
+
+  it("sets environmentOpacity to 0.10 when entering BIM mode and allows updating opacity", () => {
+    const bimState = reduceAppState(initialState, {
+      type: "ENTER_MODE",
+      mode: "bim",
+    });
+    expect(bimState.environmentOpacity).toBe(0.1);
+
+    const updatedState = reduceAppState(bimState, {
+      type: "SET_ENVIRONMENT_OPACITY",
+      opacity: 0.35,
+    });
+    expect(updatedState.environmentOpacity).toBe(0.35);
+
+    const overviewState = reduceAppState(updatedState, {
+      type: "ENTER_MODE",
+      mode: "overview",
+    });
+    expect(overviewState.environmentOpacity).toBe(1.0);
+  });
 });

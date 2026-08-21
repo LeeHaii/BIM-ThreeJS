@@ -14,13 +14,15 @@ const ICONS = {
   chevronDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
   chevronLeft: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
   hand: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>`,
-  settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  camera: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+  building: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>`,
 };
 
 function requiredElement<T extends Element>(
   root: ParentNode,
   selector: string,
-  elementType: { new (): T },
+  elementType: { new(): T },
 ): T {
   const found = root.querySelector(selector);
   if (!(found instanceof elementType))
@@ -57,7 +59,7 @@ export function renderOperatorShell(
       <aside class="left-panel ui-surface" aria-label="Mode panel">
         <div class="brand-rail" aria-label="BIM Atlas">
           <div class="brand-logo-badge" title="BIM Atlas">${ICONS.cube}</div>
-          <span class="brand-rail-text">ATLAS</span>
+          <span class="brand-rail-text">TP-BIM</span>
           <div class="brand-rail-indicator"></div>
         </div>
         <div class="left-panel-body">
@@ -81,15 +83,16 @@ export function renderOperatorShell(
           </button>
         </div>
         <div class="viewer-utilities">
-          <div class="custom-select-wrapper">
+          <div class="custom-select-wrapper named-view-wrapper">
+            <span class="select-leading-icon">${ICONS.camera}</span>
             <select class="modern-select named-view-select" aria-label="Named camera view"></select>
             <span class="select-chevron">${ICONS.chevronDown}</span>
           </div>
           <details class="layer-menu">
-            <summary>
+            <summary class="layer-menu-summary">
               <span class="action-icon">${ICONS.layers}</span>
               <span>Layers</span>
-              <span class="select-chevron" style="position: static; margin-left: 2px;">${ICONS.chevronDown}</span>
+              <span class="select-chevron">${ICONS.chevronDown}</span>
             </summary>
             <div class="layer-menu-content"></div>
           </details>
@@ -97,7 +100,8 @@ export function renderOperatorShell(
             <span class="action-icon">${ICONS.hand}</span>
             <span>Touch Mode</span>
           </button>
-          <div class="custom-select-wrapper">
+          <div class="custom-select-wrapper building-select-wrapper">
+            <span class="select-leading-icon">${ICONS.building}</span>
             <select class="modern-select building-select" aria-label="Switch building"></select>
             <span class="select-chevron">${ICONS.chevronDown}</span>
           </div>
@@ -118,6 +122,16 @@ export function renderOperatorShell(
           <span class="hint-badge">Shift + Drag</span> Pan
           <span class="hint-badge">Wheel</span> Zoom
           <span class="hint-badge">Click</span> Inspect
+        </div>
+        <div class="env-opacity-control ui-surface" aria-label="Environment opacity" hidden>
+          <div class="env-opacity-header">
+            <span class="env-opacity-icon">${ICONS.layers}</span>
+            <span class="env-opacity-label">Environment Opacity</span>
+            <span class="env-opacity-badge font-mono">10%</span>
+          </div>
+          <div class="env-opacity-slider-row">
+            <input type="range" class="env-opacity-slider" min="0" max="100" value="10" step="1" aria-label="Environment Model Opacity" />
+          </div>
         </div>
         <div class="development-banner">
           <span class="dev-indicator-dot"></span>
@@ -197,12 +211,29 @@ export function renderOperatorShell(
     '[data-action="units"]',
     HTMLButtonElement,
   );
+  const envOpacityControl = requiredElement<HTMLElement>(
+    root,
+    ".env-opacity-control",
+    HTMLElement,
+  );
+  const envOpacitySlider = requiredElement<HTMLInputElement>(
+    root,
+    ".env-opacity-slider",
+    HTMLInputElement,
+  );
+  const envOpacityBadge = requiredElement<HTMLElement>(
+    root,
+    ".env-opacity-badge",
+    HTMLElement,
+  );
   const viewer = new ViewerSessionController(store, canvasHost);
   viewer.start();
   const touchCapable =
     navigator.maxTouchPoints > 0 ||
     window.matchMedia("(pointer: coarse)").matches;
   let pointerStart: { readonly x: number; readonly y: number } | undefined;
+  let hoverRaf: number | undefined;
+  let lastHoverPos: { x: number; y: number } | undefined;
 
   for (const surface of root.querySelectorAll(".ui-surface")) {
     surface.addEventListener("pointerdown", (event) => event.stopPropagation());
@@ -210,6 +241,28 @@ export function renderOperatorShell(
   canvasHost.addEventListener("pointerdown", (event) => {
     if (event.button === 0)
       pointerStart = { x: event.clientX, y: event.clientY };
+  });
+  canvasHost.addEventListener("pointermove", (event) => {
+    if (event.buttons !== 0 || pointerStart !== undefined) return;
+    const state = store.getState();
+    if (state.mode !== "bim") return;
+    lastHoverPos = { x: event.clientX, y: event.clientY };
+    if (hoverRaf === undefined) {
+      hoverRaf = requestAnimationFrame(() => {
+        hoverRaf = undefined;
+        if (lastHoverPos !== undefined) {
+          void viewer.hoverAt(lastHoverPos.x, lastHoverPos.y);
+        }
+      });
+    }
+  });
+  canvasHost.addEventListener("pointerleave", () => {
+    lastHoverPos = undefined;
+    if (hoverRaf !== undefined) {
+      cancelAnimationFrame(hoverRaf);
+      hoverRaf = undefined;
+    }
+    void viewer.clearHover();
   });
   canvasHost.addEventListener("pointerup", (event) => {
     if (event.button !== 0 || pointerStart === undefined) return;
@@ -219,6 +272,11 @@ export function renderOperatorShell(
     );
     pointerStart = undefined;
     if (distance <= 4) void viewer.selectAt(event.clientX, event.clientY);
+  });
+  envOpacitySlider.addEventListener("input", () => {
+    const pct = Number(envOpacitySlider.value);
+    envOpacityBadge.textContent = `${String(pct)}%`;
+    viewer.setEnvironmentOpacity(pct / 100);
   });
   resetButton.addEventListener("click", () => void viewer.resetCamera());
   bimButton.addEventListener("click", () => {
@@ -362,6 +420,14 @@ export function renderOperatorShell(
         ? "Touch: orbit"
         : "Touch: vertical",
     );
+
+    const isBimMode = state.mode === "bim";
+    envOpacityControl.hidden = !isBimMode;
+    if (isBimMode) {
+      const pct = Math.round(state.environmentOpacity * 100);
+      envOpacitySlider.value = String(pct);
+      envOpacityBadge.textContent = `${String(pct)}%`;
+    }
 
     if (state.mode === "bim") {
       renderBimPanel(panelContent, state);

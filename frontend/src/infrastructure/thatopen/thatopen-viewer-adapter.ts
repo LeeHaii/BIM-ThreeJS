@@ -24,6 +24,14 @@ const selectionMaterial: FRAGS.MaterialDefinition = {
   preserveOriginalMaterial: true,
 };
 
+const hoverMaterial: FRAGS.MaterialDefinition = {
+  color: new THREE.Color("#1e293b"),
+  opacity: 0.75,
+  transparent: true,
+  renderedFaces: FRAGS.RenderedFaces.TWO,
+  preserveOriginalMaterial: false,
+};
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown viewer error";
 }
@@ -374,7 +382,9 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
   private manifest: SceneManifestV2 | undefined;
   private readonly contextLayers = new Map<string, THREE.Group>();
   private readonly fragmentLayerIds = new Set<string>();
+  private hovered: { modelId: string; localId: number } | undefined;
   private selected: { modelId: string; localId: number } | undefined;
+  private hoverToken = 0;
 
   public async initialize(
     container: HTMLElement,
@@ -541,11 +551,14 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
       dom: renderer.three.domElement,
     });
     if (result === undefined) return undefined;
+    this.hoverToken++;
+    await this.clearHover();
     await this.clearSelection();
     const modelId = result.fragments.modelId;
     await fragments.highlight(selectionMaterial, {
       [modelId]: new Set([result.localId]),
     });
+    await fragments.core.update(true);
     this.selected = { modelId, localId: result.localId };
     const [data] = await result.fragments.getItemsData([result.localId], {
       attributesDefault: true,
@@ -586,10 +599,101 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
 
   public async clearSelection(): Promise<void> {
     if (this.selected === undefined || this.fragments === undefined) return;
-    await this.fragments.resetHighlight({
-      [this.selected.modelId]: new Set([this.selected.localId]),
-    });
+    const { modelId, localId } = this.selected;
     this.selected = undefined;
+    await this.fragments.resetHighlight({
+      [modelId]: new Set([localId]),
+    });
+    await this.fragments.core.update(true);
+  }
+
+  public async hover(clientX: number, clientY: number): Promise<void> {
+    const token = ++this.hoverToken;
+    const world = this.world;
+    const fragments = this.fragments;
+    if (world === undefined || fragments === undefined) return;
+    const renderer = world.renderer;
+    if (renderer === null) return;
+    const result = await fragments.raycast({
+      camera: world.camera.three,
+      mouse: new THREE.Vector2(clientX, clientY),
+      dom: renderer.three.domElement,
+    });
+    if (token !== this.hoverToken) return;
+    if (result === undefined) {
+      await this.clearHover();
+      return;
+    }
+    const modelId = result.fragments.modelId;
+    const localId = result.localId;
+    // Do not overwrite selection highlight with hover
+    if (
+      this.selected !== undefined &&
+      this.selected.modelId === modelId &&
+      this.selected.localId === localId
+    ) {
+      await this.clearHover();
+      return;
+    }
+    // Already hovered
+    if (
+      this.hovered !== undefined &&
+      this.hovered.modelId === modelId &&
+      this.hovered.localId === localId
+    ) {
+      return;
+    }
+    await this.clearHover();
+    if (token !== this.hoverToken) return;
+    await fragments.highlight(hoverMaterial, {
+      [modelId]: new Set([localId]),
+    });
+    await fragments.core.update(true);
+    this.hovered = { modelId, localId };
+  }
+
+  public async clearHover(): Promise<void> {
+    if (this.hovered === undefined || this.fragments === undefined) return;
+    const { modelId, localId } = this.hovered;
+    this.hovered = undefined;
+    if (
+      this.selected !== undefined &&
+      this.selected.modelId === modelId &&
+      this.selected.localId === localId
+    ) {
+      return;
+    }
+    await this.fragments.resetHighlight({
+      [modelId]: new Set([localId]),
+    });
+    await this.fragments.core.update(true);
+  }
+
+  public setEnvironmentOpacity(opacity: number): void {
+    const clamped = Math.max(0, Math.min(1, opacity));
+    for (const scene of this.contextLayers.values()) {
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          for (const mat of materials) {
+            if (mat instanceof THREE.Material) {
+              if (mat.userData["originalTransparent"] === undefined) {
+                mat.userData["originalTransparent"] = mat.transparent;
+                mat.userData["originalOpacity"] = mat.opacity;
+              }
+              mat.transparent =
+                clamped < 1 || Boolean(mat.userData["originalTransparent"]);
+              const origOpacity =
+                (mat.userData["originalOpacity"] as number | undefined) ?? 1;
+              mat.opacity = clamped * origOpacity;
+              mat.needsUpdate = true;
+            }
+          }
+        }
+      });
+    }
   }
 
   public async setLayerVisibility(
@@ -642,6 +746,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
   }
 
   public async dispose(): Promise<void> {
+    await this.clearHover();
     await this.clearSelection();
     for (const object of this.contextLayers.values()) {
       object.removeFromParent();

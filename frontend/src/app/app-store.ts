@@ -103,6 +103,10 @@ export type AppCommand =
       readonly type: "SET_TOUCH_NAVIGATION";
       readonly mode: "orbit" | "vertical";
     }
+  | {
+      readonly type: "SET_ENVIRONMENT_OPACITY";
+      readonly opacity: number;
+    }
   | { readonly type: "ENTER_MODE"; readonly mode: AppState["mode"] };
 
 function isCurrent(state: AppState, generation: number): boolean {
@@ -148,6 +152,7 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
           selectedId: undefined,
         },
         occupancies: { status: "idle", items: [] },
+        environmentOpacity: 1.0,
         mode: "overview",
         error: undefined,
       };
@@ -296,10 +301,16 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
         ...state,
         viewer: { ...state.viewer, touchNavigation: command.mode },
       };
+    case "SET_ENVIRONMENT_OPACITY":
+      return {
+        ...state,
+        environmentOpacity: Math.max(0, Math.min(1, command.opacity)),
+      };
     case "ENTER_MODE":
       return {
         ...state,
         mode: command.mode,
+        environmentOpacity: command.mode === "bim" ? 0.10 : 1.0,
         bimSelection: command.mode === "bim" ? state.bimSelection : undefined,
         bimInspection:
           command.mode === "bim" ? state.bimInspection : { status: "idle" },

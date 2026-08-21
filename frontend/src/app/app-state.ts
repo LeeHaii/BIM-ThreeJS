@@ -50,6 +50,7 @@ export interface AppState {
     readonly status: LoadStatus;
     readonly items: readonly OccupancyView[];
   };
+  readonly environmentOpacity: number;
   readonly mode: "overview" | "bim" | "units";
   readonly error: string | undefined;
 }
@@ -70,6 +71,7 @@ export const initialState: AppState = {
   bimInspection: { status: "idle" },
   units: { query: "", status: "idle", items: [], selectedId: undefined },
   occupancies: { status: "idle", items: [] },
+  environmentOpacity: 1.0,
   mode: "overview",
   error: undefined,
 };
