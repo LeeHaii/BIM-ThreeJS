@@ -5,6 +5,11 @@ import { renderBimPanel } from "../bim-inspection/render-bim-panel.js";
 import { renderHouseholdPanel } from "../units/render-household-panel.js";
 import { ViewerSessionController } from "../viewer-runtime/index.js";
 
+// ============================================================================
+// DEBUG TOOL: Set to false (or comment out) to easily disable debug tools
+// ============================================================================
+export const ENABLE_DEBUG_TOOLS = true;
+
 const ICONS = {
   cube: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.12 6.4-8-4.5a2 2 0 0 0-2.24 0l-8 4.5A2 2 0 0 0 2 8.16v7.68a2 2 0 0 0 .88 1.76l8 4.5a2 2 0 0 0 2.24 0l8-4.5A2 2 0 0 0 22 15.84V8.16a2 2 0 0 0-.88-1.76Z"/><path d="m2.5 7.5 9.5 5.5 9.5-5.5"/><path d="M12 13v9"/></svg>`,
   reset: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`,
@@ -17,12 +22,15 @@ const ICONS = {
   settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
   camera: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
   building: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>`,
+  terminal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
+  copy: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  download: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
 };
 
 function requiredElement<T extends Element>(
   root: ParentNode,
   selector: string,
-  elementType: { new(): T },
+  elementType: { new (): T },
 ): T {
   const found = root.querySelector(selector);
   if (!(found instanceof elementType))
@@ -137,6 +145,54 @@ export function renderOperatorShell(
           <span class="dev-indicator-dot"></span>
           <span>Development Fixture · Real .frag + GLB</span>
         </div>
+        ${
+          ENABLE_DEBUG_TOOLS
+            ? `
+        <button class="debug-seed-btn" type="button" title="Open seed debug tools" aria-label="Open seed debug tools" aria-controls="debug-seed-panel" aria-expanded="false">
+          <span class="action-icon" aria-hidden="true">${ICONS.terminal}</span>
+        </button>
+        <div id="debug-seed-panel" class="debug-seed-panel ui-surface" role="dialog" aria-labelledby="debug-seed-title" hidden>
+          <div class="debug-seed-header">
+            <div class="debug-seed-title-row">
+              <span class="debug-seed-icon">${ICONS.terminal}</span>
+              <h3 id="debug-seed-title" class="debug-seed-title">IFC Apartment Seed Extractor</h3>
+              <span class="debug-badge">DEBUG</span>
+            </div>
+            <button class="debug-close-btn" type="button" aria-label="Close debug panel">&times;</button>
+          </div>
+          <div class="debug-seed-body">
+            <p class="debug-seed-desc">
+              Scans all IFC elements in current models containing <code>Apartment</code> metadata, extracts <code>Area</code> &amp; <code>LivingFloor</code>, groups by floor, and outputs downloadable JSON seeds.
+            </p>
+            <div class="debug-seed-actions">
+              <button class="admin-btn admin-btn-primary debug-run-btn" type="button">
+                <span>⚡ Scan &amp; Export Seeds (.json)</span>
+              </button>
+            </div>
+            <div class="debug-status-row" hidden>
+              <div class="debug-spinner" hidden></div>
+              <span class="debug-status-text">Ready</span>
+            </div>
+            <div class="debug-result-container" hidden>
+              <div class="debug-result-header">
+                <span class="debug-result-count">0 items found</span>
+                <div class="debug-result-buttons">
+                  <button type="button" class="admin-btn admin-btn-secondary small debug-copy-btn">
+                    ${ICONS.copy}
+                    <span>Copy JSON</span>
+                  </button>
+                  <button type="button" class="admin-btn admin-btn-secondary small debug-save-btn">
+                    ${ICONS.download}
+                    <span>Save .json</span>
+                  </button>
+                </div>
+              </div>
+              <pre class="debug-json-preview font-mono"></pre>
+            </div>
+          </div>
+        </div>`
+            : ""
+        }
       </main>
       <div class="error-toast" role="alert" hidden></div>
     </div>`;
@@ -314,6 +370,138 @@ export function renderOperatorShell(
       );
     if (view !== undefined) void viewer.setCamera(view.camera);
   });
+
+  if (ENABLE_DEBUG_TOOLS) {
+    const debugBtn = root.querySelector<HTMLButtonElement>(".debug-seed-btn");
+    const debugPanel = root.querySelector<HTMLElement>(".debug-seed-panel");
+    const debugCloseBtn =
+      root.querySelector<HTMLButtonElement>(".debug-close-btn");
+    const debugRunBtn = root.querySelector<HTMLButtonElement>(".debug-run-btn");
+    const debugStatusRow = root.querySelector<HTMLElement>(".debug-status-row");
+    const debugStatusText =
+      root.querySelector<HTMLElement>(".debug-status-text");
+    const debugSpinner = root.querySelector<HTMLElement>(".debug-spinner");
+    const debugResultContainer = root.querySelector<HTMLElement>(
+      ".debug-result-container",
+    );
+    const debugResultCount = root.querySelector<HTMLElement>(
+      ".debug-result-count",
+    );
+    const debugPreview = root.querySelector<HTMLElement>(".debug-json-preview");
+    const debugCopyBtn =
+      root.querySelector<HTMLButtonElement>(".debug-copy-btn");
+    const debugSaveBtn =
+      root.querySelector<HTMLButtonElement>(".debug-save-btn");
+
+    let lastGeneratedJson = "";
+
+    const triggerDownload = (jsonString: string, filename: string) => {
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    };
+
+    debugBtn?.addEventListener("click", () => {
+      if (debugPanel) {
+        debugPanel.hidden = !debugPanel.hidden;
+        debugBtn.setAttribute("aria-expanded", String(!debugPanel.hidden));
+      }
+    });
+
+    debugCloseBtn?.addEventListener("click", () => {
+      if (debugPanel) {
+        debugPanel.hidden = true;
+        debugBtn?.setAttribute("aria-expanded", "false");
+        debugBtn?.focus();
+      }
+    });
+
+    debugRunBtn?.addEventListener("click", async () => {
+      if (debugRunBtn.disabled) return;
+      debugRunBtn.disabled = true;
+      if (debugStatusRow) debugStatusRow.hidden = false;
+      if (debugSpinner) debugSpinner.hidden = false;
+      if (debugStatusText) {
+        debugStatusText.textContent = "Scanning IFC model elements...";
+      }
+
+      try {
+        const result = await viewer.extractApartmentSeeds(
+          (processed, total) => {
+            if (debugStatusText) {
+              debugStatusText.textContent =
+                total > 0
+                  ? `Processing elements: ${String(processed)} / ${String(total)} (${String(Math.round((processed / total) * 100))}%)`
+                  : `Processing elements: ${String(processed)}...`;
+            }
+          },
+        );
+
+        // 1. Log to console as requested
+        console.log("=== EXTRACTED IFC APARTMENT SEEDS ===", result);
+
+        const totalFloors = Object.keys(result).length;
+        const totalUnits = Object.values(result).reduce(
+          (sum, arr) => sum + arr.length,
+          0,
+        );
+
+        lastGeneratedJson = JSON.stringify(result, null, 2);
+
+        // 2. Save / download JSON file automatically
+        const state = store.getState();
+        const bldgId = state.building.selectedId ?? "model";
+        triggerDownload(lastGeneratedJson, `apartment-seeds-${bldgId}.json`);
+
+        // 3. Display in UI panel
+        if (debugSpinner) debugSpinner.hidden = true;
+        if (debugStatusText) {
+          debugStatusText.textContent = `Done! Extracted ${String(totalUnits)} apartments across ${String(totalFloors)} floors. (Logged to console & saved JSON)`;
+        }
+        if (debugResultCount) {
+          debugResultCount.textContent = `${String(totalUnits)} apartments · ${String(totalFloors)} floors`;
+        }
+        if (debugPreview) {
+          debugPreview.textContent = lastGeneratedJson;
+        }
+        if (debugResultContainer) {
+          debugResultContainer.hidden = false;
+        }
+      } catch (err) {
+        console.error("Error extracting apartment seeds:", err);
+        if (debugSpinner) debugSpinner.hidden = true;
+        if (debugStatusText) {
+          debugStatusText.textContent = `Extraction failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      } finally {
+        debugRunBtn.disabled = false;
+      }
+    });
+
+    debugCopyBtn?.addEventListener("click", () => {
+      if (lastGeneratedJson.length === 0) return;
+      void navigator.clipboard.writeText(lastGeneratedJson);
+      const span = debugCopyBtn.querySelector("span");
+      if (span) {
+        const orig = span.textContent;
+        span.textContent = "Copied!";
+        setTimeout(() => {
+          span.textContent = orig;
+        }, 1500);
+      }
+    });
+
+    debugSaveBtn?.addEventListener("click", () => {
+      if (lastGeneratedJson.length === 0) return;
+      const state = store.getState();
+      const bldgId = state.building.selectedId ?? "model";
+      triggerDownload(lastGeneratedJson, `apartment-seeds-${bldgId}.json`);
+    });
+  }
 
   const update = (state: AppState): void => {
     const manifest = state.model.manifest;
