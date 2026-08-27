@@ -110,8 +110,16 @@ export class ApiClient {
     buildingId: BuildingId,
     query: string,
     signal?: AbortSignal,
+    pagination?: {
+      readonly page: number;
+      readonly pageSize: number;
+    },
   ): Promise<Page<UnitSummary>> {
-    const parameters = new URLSearchParams({ q: query, pageSize: "100" });
+    const parameters = new URLSearchParams({
+      q: query,
+      page: String(pagination?.page ?? 1),
+      pageSize: String(pagination?.pageSize ?? 100),
+    });
     return this.request(
       `/buildings/${buildingId}/units?${parameters.toString()}`,
       pageSchema(unitSummarySchema),
@@ -136,16 +144,11 @@ export class ApiClient {
     payload: CreateBuildingInput,
     signal?: AbortSignal,
   ): Promise<BuildingDetail> {
-    return this.request(
-      "/admin/buildings",
-      buildingDetailSchema,
-      signal,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      },
-    );
+    return this.request("/admin/buildings", buildingDetailSchema, signal, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   }
 
   public deleteBuilding(

@@ -11,6 +11,8 @@ import CameraControls from "camera-controls";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type {
+  ApartmentSeedsGrouped,
+  ExtractedApartmentData,
   OperatorViewerPort,
   ViewerLayerState,
   ViewerPick,
@@ -31,6 +33,8 @@ const hoverMaterial: FRAGS.MaterialDefinition = {
   renderedFaces: FRAGS.RenderedFaces.TWO,
   preserveOriginalMaterial: false,
 };
+
+const viewUpdateIntervalMs = 32;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown viewer error";
@@ -432,6 +436,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
 
     const fragments = components.get(OBC.FragmentsManager);
     fragments.init(manifest.runtimeCompatibility.workerUrl);
+    fragments.core.settings.maxUpdateRate = viewUpdateIntervalMs;
     fragments.list.onItemSet.add(({ value: model }) => {
       model.useCamera(world.camera.three);
       world.scene.three.add(model.object);
@@ -439,6 +444,9 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     });
     world.camera.controls.addEventListener("update", () => {
       void fragments.core.update();
+    });
+    world.camera.controls.addEventListener("rest", () => {
+      void fragments.core.update(true);
     });
     const controls = world.camera.controls;
     controls.mouseButtons.left = CameraControls.ACTION.NONE;
@@ -558,7 +566,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await fragments.highlight(selectionMaterial, {
       [modelId]: new Set([result.localId]),
     });
-    await fragments.core.update(true);
+    await fragments.core.update();
     this.selected = { modelId, localId: result.localId };
     const [data] = await result.fragments.getItemsData([result.localId], {
       attributesDefault: true,
@@ -604,7 +612,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await this.fragments.resetHighlight({
       [modelId]: new Set([localId]),
     });
-    await this.fragments.core.update(true);
+    await this.fragments.core.update();
   }
 
   public async hover(clientX: number, clientY: number): Promise<void> {
@@ -648,7 +656,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await fragments.highlight(hoverMaterial, {
       [modelId]: new Set([localId]),
     });
-    await fragments.core.update(true);
+    await fragments.core.update();
     this.hovered = { modelId, localId };
   }
 
@@ -666,7 +674,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await this.fragments.resetHighlight({
       [modelId]: new Set([localId]),
     });
-    await this.fragments.core.update(true);
+    await this.fragments.core.update();
   }
 
   public setEnvironmentOpacity(opacity: number): void {
@@ -769,6 +777,281 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     this.fragments = undefined;
     this.manifest = undefined;
   }
+
+  public async extractApartmentSeeds(
+    onProgress?: (processed: number, total: number) => void,
+  ): Promise<ApartmentSeedsGrouped> {
+    if (this.fragments === undefined) return {};
+    const grouped: Record<string, ExtractedApartmentData[]> = {};
+
+    let totalElements = 0;
+    let processedElements = 0;
+
+    const modelTasks: Array<{
+      model: FRAGS.FragmentsModel;
+      localIds: number[];
+    }> = [];
+
+    for (const layerId of this.fragmentLayerIds) {
+      const model = this.fragments.list.get(layerId);
+      if (!model) continue;
+      try {
+        const rawIds = await model.getLocalIds();
+        const ids: number[] = Array.isArray(rawIds)
+          ? (rawIds as number[])
+          : Array.from((rawIds as Iterable<number> | undefined) ?? []);
+        if (ids.length > 0) {
+          modelTasks.push({ model, localIds: ids });
+          totalElements += ids.length;
+        }
+      } catch (err) {
+        console.warn(`Failed to get localIds for layer ${layerId}:`, err);
+      }
+    }
+
+    onProgress?.(0, totalElements);
+
+    const BATCH_SIZE = 100;
+
+    for (const { model, localIds } of modelTasks) {
+      for (let i = 0; i < localIds.length; i += BATCH_SIZE) {
+        const batch = localIds.slice(i, i + BATCH_SIZE);
+        try {
+          const itemsData = await model.getItemsData(batch, {
+            attributesDefault: true,
+            relations: {
+              IsDefinedBy: { attributes: true, relations: true },
+              IsTypedBy: { attributes: true, relations: true },
+              HasAssociations: { attributes: true, relations: true },
+              ContainedInStructure: { attributes: true, relations: true },
+              HasAssignments: { attributes: true, relations: true },
+              DefinesType: { attributes: true, relations: true },
+            },
+          });
+
+          for (const item of itemsData) {
+            if (!item || typeof item !== "object") continue;
+            const extracted = extractAllPropertiesAndGroups(
+              item as Record<string, unknown>,
+            );
+
+            // 1. Search for Apartment property
+            let apartmentVal: string | undefined;
+            for (const prop of extracted.properties) {
+              const k = prop.key.trim().toLowerCase();
+              if (
+                k === "apartment" ||
+                k === "apartmentno" ||
+                k === "apartment_no" ||
+                k === "apartmentnumber" ||
+                k === "apartment_number" ||
+                k === "apartmentname" ||
+                k === "apartment_name" ||
+                k === "canho" ||
+                k === "can_ho" ||
+                k === "ma_can_ho" ||
+                k === "unit" ||
+                k === "unit_no" ||
+                k === "unit_name"
+              ) {
+                if (prop.value !== null && prop.value !== undefined) {
+                  const s = String(prop.value).trim();
+                  if (s.length > 0) {
+                    apartmentVal = s;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (!apartmentVal) {
+              const directItem = item as Record<string, unknown>;
+              for (const [k, v] of Object.entries(directItem)) {
+                if (
+                  k.toLowerCase() === "apartment" &&
+                  v !== null &&
+                  v !== undefined
+                ) {
+                  const s = String(propertyValue(v) ?? "").trim();
+                  if (s.length > 0) {
+                    apartmentVal = s;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (!apartmentVal) continue;
+
+            // 2. Search for Area property
+            let areaVal = 0;
+            for (const prop of extracted.properties) {
+              const k = prop.key.trim().toLowerCase();
+              if (
+                k === "area" ||
+                k === "grossarea" ||
+                k === "netarea" ||
+                k === "grossfloorarea" ||
+                k === "netfloorarea" ||
+                k === "gross_floor_area" ||
+                k === "net_floor_area" ||
+                k === "livingarea" ||
+                k === "usablearea" ||
+                k === "dien_tich" ||
+                k === "dientich" ||
+                k === "areavalue"
+              ) {
+                if (typeof prop.value === "number") {
+                  areaVal = Math.round(prop.value * 100) / 100;
+                  break;
+                } else if (typeof prop.value === "string") {
+                  const num = parseFloat(prop.value.replace(/[^0-9.-]+/g, ""));
+                  if (!isNaN(num) && num > 0) {
+                    areaVal = Math.round(num * 100) / 100;
+                    break;
+                  }
+                }
+              }
+            }
+
+            // 3. Search for LivingFloor property
+            let livingFloorVal: string | undefined;
+
+            for (const prop of extracted.properties) {
+              const k = prop.key.trim().toLowerCase();
+              if (
+                k === "livingfloor" ||
+                k === "living_floor" ||
+                k === "living floor" ||
+                k === "floor" ||
+                k === "storey" ||
+                k === "level" ||
+                k === "tang" ||
+                k === "tang_so"
+              ) {
+                if (prop.value !== null && prop.value !== undefined) {
+                  const s = String(prop.value).trim();
+                  if (s.length > 0) {
+                    livingFloorVal = s;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (!livingFloorVal) {
+              for (const prop of extracted.properties) {
+                const k = prop.key.trim().toLowerCase();
+                if (
+                  k.includes("storey name") ||
+                  k.includes("spatial container name") ||
+                  k.includes("building storey")
+                ) {
+                  if (prop.value !== null && prop.value !== undefined) {
+                    const s = String(prop.value).trim();
+                    if (s.length > 0) {
+                      livingFloorVal = s;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+
+            if (!livingFloorVal) {
+              const match = /(?:[A-Za-z_-]*)(\d{1,2})(\d{2})$/.exec(apartmentVal);
+              if (match?.[1]) {
+                livingFloorVal = String(parseInt(match[1], 10));
+              } else {
+                const singleNumMatch = /\d+/.exec(apartmentVal);
+                if (singleNumMatch) {
+                  const n = parseInt(singleNumMatch[0], 10);
+                  if (n >= 100) {
+                    livingFloorVal = String(Math.floor(n / 100));
+                  } else {
+                    livingFloorVal = String(n);
+                  }
+                }
+              }
+            }
+
+            let floorKey = livingFloorVal ?? "Unknown";
+            const floorDigits = /(?:Floor|Level|Tầng|Storey|L)?\s*0*(\d+)/i.exec(
+              floorKey,
+            );
+            if (floorDigits?.[1]) {
+              floorKey = floorDigits[1];
+            }
+
+            let floorList = grouped[floorKey];
+            if (!floorList) {
+              floorList = [];
+              grouped[floorKey] = floorList;
+            }
+
+            const existingIndex = floorList.findIndex(
+              (u) => u.Apartment === apartmentVal,
+            );
+
+            const globalId = propertyNamed(extracted.properties, "GlobalId");
+            const expressId =
+              typeof (item as Record<string, unknown>)._localId === "number"
+                ? ((item as Record<string, unknown>)._localId as number)
+                : undefined;
+
+            const category = extracted.category;
+
+            if (existingIndex >= 0) {
+              const existing = floorList[existingIndex];
+              if (existing && existing.Area === 0 && areaVal > 0) {
+                floorList[existingIndex] = {
+                  ...existing,
+                  Area: areaVal,
+                };
+              }
+            } else {
+              floorList.push({
+                Apartment: apartmentVal,
+                Area: areaVal,
+                ...(livingFloorVal !== undefined
+                  ? { LivingFloor: livingFloorVal }
+                  : {}),
+                ...(expressId !== undefined ? { ExpressID: expressId } : {}),
+                ...(globalId !== undefined ? { GlobalId: globalId } : {}),
+                ...(category !== undefined ? { Category: category } : {}),
+              });
+            }
+          }
+        } catch (err) {
+          console.warn("Error processing batch of IFC items:", err);
+        }
+
+        processedElements += batch.length;
+        onProgress?.(processedElements, totalElements);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    const sortedGrouped: Record<string, ExtractedApartmentData[]> = {};
+
+    const sortedFloorKeys = Object.keys(grouped).sort((a, b) => {
+      const numA = parseInt(a, 10);
+      const numB = parseInt(b, 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b, undefined, { numeric: true });
+    });
+
+    for (const key of sortedFloorKeys) {
+      const list = grouped[key] ?? [];
+      list.sort((a, b) =>
+        a.Apartment.localeCompare(b.Apartment, undefined, { numeric: true }),
+      );
+      sortedGrouped[key] = list;
+    }
+
+    return sortedGrouped;
+  }
+
 
   private requireWorld(): OBC.SimpleWorld<
     OBC.SimpleScene,

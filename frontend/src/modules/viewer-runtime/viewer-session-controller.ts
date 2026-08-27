@@ -1,6 +1,7 @@
 import type { CameraPose } from "@bim/shared";
 import type { AppStore } from "../../app/app-store.js";
 import { ThatOpenViewerAdapter } from "../../infrastructure/thatopen/thatopen-viewer-adapter.js";
+import type { ApartmentSeedsGrouped } from "./viewer-port.js";
 
 function errorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === "AbortError") return "";
@@ -143,6 +144,13 @@ export class ViewerSessionController {
   public setTouchNavigation(mode: "orbit" | "vertical"): void {
     this.adapter?.setTouchNavigation(mode);
     this.store.dispatch({ type: "SET_TOUCH_NAVIGATION", mode });
+  }
+
+  public async extractApartmentSeeds(
+    onProgress?: (processed: number, total: number) => void,
+  ): Promise<ApartmentSeedsGrouped> {
+    if (this.adapter === undefined) return {};
+    return this.adapter.extractApartmentSeeds(onProgress);
   }
 
   public resize(): void {

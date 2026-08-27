@@ -53,6 +53,11 @@ export function renderAdminConsole(
   let activeTab: "models" | "households" | "settings" = "models";
   let units: readonly UnitSummary[] = [];
   let unitSearchQuery = "";
+  let unitPage = 1;
+  let unitPageSize = 25;
+  let unitTotal = 0;
+  let unitIsLoading = false;
+  let unitRequestGeneration = 0;
   let activeSceneManifest: SceneManifestV2 | null = null;
 
   // Selected unit for resident modal
@@ -69,6 +74,7 @@ export function renderAdminConsole(
   let isAddResidentFormOpen = false;
 
   let toastTimeout: number | undefined;
+  let unitSearchTimeout: number | undefined;
 
   function showToast(
     message: string,
@@ -93,6 +99,8 @@ export function renderAdminConsole(
         currentBuilding = null;
         activeSceneManifest = null;
         units = [];
+        unitTotal = 0;
+        unitIsLoading = false;
         window.history.replaceState(null, "", "/admin");
         render();
         return;
@@ -118,21 +126,45 @@ export function renderAdminConsole(
 
   async function selectBuilding(id: BuildingId): Promise<void> {
     currentBuildingId = id;
+    unitPage = 1;
+    unitTotal = 0;
+    const requestGeneration = ++unitRequestGeneration;
     window.history.replaceState(null, "", `/admin/${id}`);
     try {
       const [detail, manifestResult, unitsResult] = await Promise.allSettled([
         api.getBuilding(id),
         api.getActiveSceneManifest(id),
-        api.searchUnits(id, unitSearchQuery),
+        api.searchUnits(id, unitSearchQuery, undefined, {
+          page: unitPage,
+          pageSize: unitPageSize,
+        }),
       ]);
+
+      if (
+        requestGeneration !== unitRequestGeneration ||
+        currentBuildingId !== id
+      ) {
+        return;
+      }
 
       currentBuilding = detail.status === "fulfilled" ? detail.value : null;
       activeSceneManifest =
         manifestResult.status === "fulfilled" ? manifestResult.value : null;
-      units = unitsResult.status === "fulfilled" ? unitsResult.value.items : [];
+      if (unitsResult.status === "fulfilled") {
+        units = unitsResult.value.items;
+        unitPage = unitsResult.value.page;
+        unitPageSize = unitsResult.value.pageSize;
+        unitTotal = unitsResult.value.total;
+      } else {
+        units = [];
+        unitTotal = 0;
+      }
+      unitIsLoading = false;
 
       render();
     } catch (err: unknown) {
+      if (requestGeneration !== unitRequestGeneration) return;
+      unitIsLoading = false;
       const msg =
         err instanceof Error ? err.message : "Failed to load project details";
       showToast(msg, "error");
@@ -142,14 +174,45 @@ export function renderAdminConsole(
 
   async function refreshUnits(): Promise<void> {
     if (!currentBuildingId) return;
+    const buildingId = currentBuildingId;
+    const requestGeneration = ++unitRequestGeneration;
+    unitIsLoading = true;
+    renderUnitsResults();
     try {
-      const page = await api.searchUnits(currentBuildingId, unitSearchQuery);
+      const page = await api.searchUnits(
+        buildingId,
+        unitSearchQuery,
+        undefined,
+        { page: unitPage, pageSize: unitPageSize },
+      );
+      if (
+        requestGeneration !== unitRequestGeneration ||
+        currentBuildingId !== buildingId
+      ) {
+        return;
+      }
+
+      const lastPage = Math.max(1, Math.ceil(page.total / page.pageSize));
+      if (page.page > lastPage) {
+        unitPage = lastPage;
+        unitIsLoading = false;
+        await refreshUnits();
+        return;
+      }
+
       units = page.items;
-      renderUnitsTable();
+      unitPage = page.page;
+      unitPageSize = page.pageSize;
+      unitTotal = page.total;
+      unitIsLoading = false;
+      renderUnitsResults();
     } catch (err: unknown) {
+      if (requestGeneration !== unitRequestGeneration) return;
+      unitIsLoading = false;
       const msg =
         err instanceof Error ? err.message : "Failed to refresh units";
       showToast(msg, "error");
+      renderUnitsResults();
     }
   }
 
@@ -269,7 +332,7 @@ export function renderAdminConsole(
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
                     <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                   </svg>
-                  <span>Households & Managed Spaces (${String(units.length)})</span>
+                  <span class="admin-households-tab-label">Households & Managed Spaces (${String(unitTotal)})</span>
                 </button>
                 <button type="button" class="admin-tab ${activeTab === "settings" ? "active" : ""}" data-tab="settings">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -468,17 +531,35 @@ export function renderAdminConsole(
             </svg>
             <input type="text" class="admin-input input-unit-search" placeholder="Search by space code or name..." value="${escapeHtml(unitSearchQuery)}" />
           </div>
-          <span class="admin-toolbar-count">${String(units.length)} spaces listed</span>
+          <span class="admin-toolbar-count" aria-live="polite">${String(unitTotal)} ${unitTotal === 1 ? "space" : "spaces"} found</span>
         </div>
 
-        <div class="admin-units-table-container">
-          ${renderUnitsTableMarkup()}
+        <div class="admin-units-results">
+          ${renderUnitsResultsMarkup()}
         </div>
       </div>
     `;
   }
 
-  function renderUnitsTableMarkup(): string {
+  function renderUnitsResultsMarkup(): string {
+    if (unitIsLoading) {
+      return `
+        <div class="admin-empty-table" role="status">
+          <svg class="admin-spinner" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+            <line x1="12" y1="2" x2="12" y2="6"></line>
+            <line x1="12" y1="18" x2="12" y2="22"></line>
+            <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+            <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+            <line x1="2" y1="12" x2="6" y2="12"></line>
+            <line x1="18" y1="12" x2="22" y2="12"></line>
+            <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+            <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+          </svg>
+          <p>Loading managed spaces…</p>
+        </div>
+      `;
+    }
+
     if (units.length === 0) {
       return `
         <div class="admin-empty-table">
@@ -488,78 +569,187 @@ export function renderAdminConsole(
       `;
     }
 
+    const totalPages = Math.max(1, Math.ceil(unitTotal / unitPageSize));
+    const firstItem = (unitPage - 1) * unitPageSize + 1;
+    const lastItem = Math.min(unitPage * unitPageSize, unitTotal);
+
     return `
-      <table class="admin-table">
-        <thead>
-          <tr>
-            <th>Code</th>
-            <th>Display Name</th>
-            <th>Storey</th>
-            <th>Type</th>
-            <th>Area (m²)</th>
-            <th>Owner / Registration</th>
-            <th>Status</th>
-            <th class="text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${units
-            .map(
-              (u) => `
-            <tr data-unit-id="${escapeHtml(u.id)}">
-              <td class="font-mono font-bold">${escapeHtml(u.code)}</td>
-              <td>${escapeHtml(u.displayName)}</td>
-              <td><span class="admin-badge">${escapeHtml(u.storeyCode)}</span></td>
-              <td><span class="admin-badge type">${escapeHtml(u.unitType)}</span></td>
-              <td class="font-mono">${u.area !== undefined ? `${u.area.toFixed(1)} m²` : "—"}</td>
-              <td>
-                <div class="admin-table-owner">${escapeHtml(u.owner ?? "Unregistered")}</div>
-                ${u.certificateNumber ? `<div class="admin-table-sub font-mono">Cert: ${escapeHtml(u.certificateNumber)}</div>` : ""}
-              </td>
-              <td>
-                <span class="admin-status-pill small ${u.status === "active" ? "active" : "inactive"}">
-                  ${escapeHtml(u.status)}
-                </span>
-              </td>
-              <td class="text-right">
-                <div class="admin-row-actions">
-                  <button type="button" class="admin-action-btn btn-manage-residents" data-unit-id="${escapeHtml(u.id)}" title="Manage Residents">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                      <circle cx="9" cy="7" r="4"></circle>
-                    </svg>
-                    <span>Residents</span>
-                  </button>
-                  <button type="button" class="admin-action-btn btn-edit-space" data-unit-id="${escapeHtml(u.id)}" title="Edit space details">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                    </svg>
-                  </button>
-                  <button type="button" class="admin-action-btn danger btn-delete-space" data-unit-id="${escapeHtml(u.id)}" title="Delete space">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="3 6 5 6 21 6"></polyline>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    </svg>
-                  </button>
-                </div>
-              </td>
-            </tr>
-          `,
-            )
-            .join("")}
-        </tbody>
-      </table>
+      <div class="admin-units-table-container">
+        <div class="admin-table-scroll">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Display Name</th>
+                <th>Storey</th>
+                <th>Type</th>
+                <th>Area (m²)</th>
+                <th>Owner / Registration</th>
+                <th>Status</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${units
+                .map(
+                  (u) => `
+                <tr data-unit-id="${escapeHtml(u.id)}">
+                  <td class="font-mono font-bold">${escapeHtml(u.code)}</td>
+                  <td>${escapeHtml(u.displayName)}</td>
+                  <td><span class="admin-badge">${escapeHtml(u.storeyCode)}</span></td>
+                  <td><span class="admin-badge type">${escapeHtml(u.unitType)}</span></td>
+                  <td class="font-mono">${u.area !== undefined ? `${u.area.toFixed(1)} m²` : "—"}</td>
+                  <td>
+                    <div class="admin-table-owner">${escapeHtml(u.owner ?? "Unregistered")}</div>
+                    ${u.certificateNumber ? `<div class="admin-table-sub font-mono">Cert: ${escapeHtml(u.certificateNumber)}</div>` : ""}
+                  </td>
+                  <td>
+                    <span class="admin-status-pill small ${u.status === "active" ? "active" : "inactive"}">
+                      ${escapeHtml(u.status)}
+                    </span>
+                  </td>
+                  <td class="text-right">
+                    <div class="admin-row-actions">
+                      <button type="button" class="admin-action-btn btn-manage-residents" data-unit-id="${escapeHtml(u.id)}" title="Manage Residents">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="9" cy="7" r="4"></circle>
+                        </svg>
+                        <span>Residents</span>
+                      </button>
+                      <button type="button" class="admin-action-btn btn-edit-space" data-unit-id="${escapeHtml(u.id)}" title="Edit space details">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                      </button>
+                      <button type="button" class="admin-action-btn danger btn-delete-space" data-unit-id="${escapeHtml(u.id)}" title="Delete space">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="3 6 5 6 21 6"></polyline>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `,
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="admin-pagination">
+          <p class="admin-pagination-summary">Showing ${String(firstItem)}–${String(lastItem)} of ${String(unitTotal)}</p>
+          <div class="admin-pagination-controls">
+            <label class="admin-page-size-label" for="admin-unit-page-size">Rows per page</label>
+            <select id="admin-unit-page-size" class="admin-select admin-page-size-select">
+              ${[25, 50, 100]
+                .map(
+                  (size) =>
+                    `<option value="${String(size)}" ${size === unitPageSize ? "selected" : ""}>${String(size)}</option>`,
+                )
+                .join("")}
+            </select>
+            <nav class="admin-page-nav" aria-label="Managed spaces pagination">
+              <button type="button" class="admin-page-btn btn-unit-page" data-page="${String(unitPage - 1)}" ${unitPage === 1 ? "disabled" : ""} aria-label="Go to previous page">Previous</button>
+              <span class="admin-page-status" aria-current="page">Page ${String(unitPage)} of ${String(totalPages)}</span>
+              <button type="button" class="admin-page-btn btn-unit-page" data-page="${String(unitPage + 1)}" ${unitPage === totalPages ? "disabled" : ""} aria-label="Go to next page">Next</button>
+            </nav>
+          </div>
+        </div>
+      </div>
     `;
   }
 
-  function renderUnitsTable(): void {
-    const container = root.querySelector<HTMLElement>(
-      ".admin-units-table-container",
-    );
+  function renderUnitsResults(): void {
+    const container = root.querySelector<HTMLElement>(".admin-units-results");
     if (container) {
-      container.innerHTML = renderUnitsTableMarkup();
+      container.innerHTML = renderUnitsResultsMarkup();
+      bindUnitResultsEvents();
     }
+
+    const count = root.querySelector<HTMLElement>(".admin-toolbar-count");
+    if (count) {
+      count.textContent = `${String(unitTotal)} ${unitTotal === 1 ? "space" : "spaces"} found`;
+    }
+
+    const tabLabel = root.querySelector<HTMLElement>(
+      ".admin-households-tab-label",
+    );
+    if (tabLabel) {
+      tabLabel.textContent = `Households & Managed Spaces (${String(unitTotal)})`;
+    }
+  }
+
+  function bindUnitResultsEvents(): void {
+    root
+      .querySelectorAll<HTMLButtonElement>(".btn-unit-page")
+      .forEach((button) => {
+        button.addEventListener("click", () => {
+          const requestedPage = Number(button.dataset.page);
+          const totalPages = Math.max(1, Math.ceil(unitTotal / unitPageSize));
+          if (
+            Number.isInteger(requestedPage) &&
+            requestedPage >= 1 &&
+            requestedPage <= totalPages &&
+            requestedPage !== unitPage
+          ) {
+            unitPage = requestedPage;
+            void refreshUnits();
+          }
+        });
+      });
+
+    root
+      .querySelector<HTMLSelectElement>("#admin-unit-page-size")
+      ?.addEventListener("change", (event) => {
+        const nextPageSize = Number(
+          (event.currentTarget as HTMLSelectElement).value,
+        );
+        if ([25, 50, 100].includes(nextPageSize)) {
+          unitPageSize = nextPageSize;
+          unitPage = 1;
+          void refreshUnits();
+        }
+      });
+
+    root
+      .querySelectorAll<HTMLButtonElement>(".btn-manage-residents")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const unitId = btn.dataset.unitId;
+          const found = units.find((u) => u.id === unitId);
+          if (found) void openResidentModal(found);
+        });
+      });
+
+    root
+      .querySelectorAll<HTMLButtonElement>(".btn-edit-space")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const unitId = btn.dataset.unitId;
+          const found = units.find((u) => u.id === unitId);
+          if (found) {
+            editingUnit = found;
+            isSpaceModalOpen = true;
+            renderSpaceModal();
+          }
+        });
+      });
+
+    root
+      .querySelectorAll<HTMLButtonElement>(".btn-delete-space")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const unitId = btn.dataset.unitId;
+          const found = units.find((u) => u.id === unitId);
+          if (found) {
+            unitToDelete = found;
+            renderDeleteSpaceModal();
+          }
+        });
+      });
   }
 
   function renderSettingsTab(): string {
@@ -605,7 +795,7 @@ export function renderAdminConsole(
               </div>
               <div class="admin-meta-item">
                 <span class="admin-meta-label">Managed Spaces Count</span>
-                <span class="admin-meta-value font-mono">${String(units.length)} units registered</span>
+                <span class="admin-meta-value font-mono">${String(unitTotal)} units registered</span>
               </div>
             </div>
           </div>
@@ -835,9 +1025,16 @@ export function renderAdminConsole(
         const payload: CreateUnitInput | UpdateUnitInput = {
           code: getFormString(formData, "code").toUpperCase(),
           displayName: getFormString(formData, "displayName"),
-          storeyCode: getFormString(formData, "storeyCode", "L01").toUpperCase(),
+          storeyCode: getFormString(
+            formData,
+            "storeyCode",
+            "L01",
+          ).toUpperCase(),
           unitType: getFormString(formData, "unitType", "apartment"),
-          status: getFormString(formData, "status") === "inactive" ? "inactive" : "active",
+          status:
+            getFormString(formData, "status") === "inactive"
+              ? "inactive"
+              : "active",
           address: addressStr.length > 0 ? addressStr : undefined,
           area: areaStr.length > 0 ? parseFloat(areaStr) : undefined,
           owner: ownerStr.length > 0 ? ownerStr : undefined,
@@ -911,7 +1108,10 @@ export function renderAdminConsole(
           if (!currentBuildingId || !unitToDelete) return;
           try {
             await api.deleteUnit(currentBuildingId, unitToDelete.id);
-            showToast(`Space "${unitToDelete.displayName}" deleted.`, "success");
+            showToast(
+              `Space "${unitToDelete.displayName}" deleted.`,
+              "success",
+            );
             unitToDelete = null;
             closeAllModals();
             await refreshUnits();
@@ -952,7 +1152,7 @@ export function renderAdminConsole(
               <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">Deleting this project will permanently remove:</p>
               <ul style="font-size: 12px; color: var(--text-secondary); margin-left: 18px; line-height: 1.6;">
                 <li>Active 3D Scene manifests and model versions</li>
-                <li>All managed spaces (${String(units.length)} units)</li>
+                <li>All managed spaces (${String(unitTotal)} units)</li>
                 <li>All resident profiles and occupancy records</li>
                 <li>User access permissions and configurations</li>
               </ul>
@@ -1454,9 +1654,8 @@ export function renderAdminConsole(
         }
 
         const isIfcConversion = ifcFile.name.toLowerCase().endsWith(".ifc");
-        const submitBtn = modelUploadForm.querySelector<HTMLButtonElement>(
-          ".btn-save-models",
-        );
+        const submitBtn =
+          modelUploadForm.querySelector<HTMLButtonElement>(".btn-save-models");
         if (submitBtn) {
           submitBtn.disabled = true;
           submitBtn.innerHTML = `
@@ -1508,51 +1707,18 @@ export function renderAdminConsole(
       });
 
     // Unit Search
-    const searchInput = root.querySelector<HTMLInputElement>(
-      ".input-unit-search",
-    );
+    const searchInput =
+      root.querySelector<HTMLInputElement>(".input-unit-search");
     searchInput?.addEventListener("input", () => {
       unitSearchQuery = searchInput.value;
-      void refreshUnits();
+      unitPage = 1;
+      if (unitSearchTimeout) window.clearTimeout(unitSearchTimeout);
+      unitSearchTimeout = window.setTimeout(() => {
+        void refreshUnits();
+      }, 250);
     });
 
-    // Unit table action delegations
-    root
-      .querySelectorAll<HTMLButtonElement>(".btn-manage-residents")
-      .forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const unitId = btn.dataset.unitId;
-          const found = units.find((u) => u.id === unitId);
-          if (found) void openResidentModal(found);
-        });
-      });
-
-    root
-      .querySelectorAll<HTMLButtonElement>(".btn-edit-space")
-      .forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const unitId = btn.dataset.unitId;
-          const found = units.find((u) => u.id === unitId);
-          if (found) {
-            editingUnit = found;
-            isSpaceModalOpen = true;
-            renderSpaceModal();
-          }
-        });
-      });
-
-    root
-      .querySelectorAll<HTMLButtonElement>(".btn-delete-space")
-      .forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const unitId = btn.dataset.unitId;
-          const found = units.find((u) => u.id === unitId);
-          if (found) {
-            unitToDelete = found;
-            renderDeleteSpaceModal();
-          }
-        });
-      });
+    bindUnitResultsEvents();
 
     // Close Modals (Delegation on modal container & direct buttons)
     const modalContainer = root.querySelector<HTMLElement>(
@@ -1587,6 +1753,8 @@ export function renderAdminConsole(
 
   return () => {
     if (toastTimeout) window.clearTimeout(toastTimeout);
+    if (unitSearchTimeout) window.clearTimeout(unitSearchTimeout);
+    unitRequestGeneration += 1;
     window.removeEventListener("keydown", onGlobalKeyDown);
     root.innerHTML = "";
   };

@@ -24,6 +24,20 @@ export interface ViewerPick {
   readonly groups?: readonly PropertyGroup[] | undefined;
 }
 
+export interface ExtractedApartmentData {
+  readonly Apartment: string;
+  readonly Area: number;
+  readonly LivingFloor?: string | number | undefined;
+  readonly ExpressID?: number | undefined;
+  readonly GlobalId?: string | undefined;
+  readonly Category?: string | undefined;
+}
+
+export type ApartmentSeedsGrouped = Record<
+  string,
+  Array<ExtractedApartmentData>
+>;
+
 export interface OperatorViewerPort {
   initialize(container: HTMLElement, manifest: SceneManifestV2): Promise<void>;
   loadScene(
@@ -46,4 +60,8 @@ export interface OperatorViewerPort {
   setTouchNavigation(mode: "orbit" | "vertical"): void;
   resize(): void;
   dispose(): Promise<void>;
+  extractApartmentSeeds?(
+    onProgress?: (processed: number, total: number) => void,
+  ): Promise<ApartmentSeedsGrouped>;
 }
+
