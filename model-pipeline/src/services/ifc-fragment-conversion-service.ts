@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { IfcImporter } from "@thatopen/fragments";
+import { extractIfcUnitBindings } from "./ifc-unit-binding-service.js";
 
 export interface IfcConversionRequest {
   readonly inputPath: string;
@@ -17,6 +18,12 @@ export interface IfcConversionReport {
   readonly sha256: string;
   readonly converter: "@thatopen/fragments@3.4.7";
   readonly webIfc: "0.0.77";
+  readonly unitBindings: {
+    readonly outputPath: string;
+    readonly bindingCount: number;
+    readonly storeyCount: number;
+    readonly scannedElementCount: number;
+  };
 }
 
 export async function convertIfcToFragments(
@@ -36,6 +43,15 @@ export async function convertIfcToFragments(
 
   const fragments = await importer.process({ bytes, raw: false });
   await writeFile(outputPath, fragments);
+  const unitBindingIndex = await extractIfcUnitBindings({
+    inputPath,
+    wasmDirectory,
+  });
+  const unitBindingOutputPath = `${outputPath}.unit-bindings.json`;
+  await writeFile(
+    unitBindingOutputPath,
+    `${JSON.stringify(unitBindingIndex, null, 2)}\n`,
+  );
   return {
     schemaVersion: "1.0",
     inputPath: request.inputPath.replaceAll("\\", "/"),
@@ -44,5 +60,11 @@ export async function convertIfcToFragments(
     sha256: createHash("sha256").update(fragments).digest("hex"),
     converter: "@thatopen/fragments@3.4.7",
     webIfc: "0.0.77",
+    unitBindings: {
+      outputPath: unitBindingOutputPath.replaceAll("\\", "/"),
+      bindingCount: unitBindingIndex.bindings.length,
+      storeyCount: unitBindingIndex.storeys.length,
+      scannedElementCount: unitBindingIndex.scannedElementCount,
+    },
   };
 }

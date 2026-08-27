@@ -30,7 +30,11 @@ describe("application reducer", () => {
         features: {},
       },
       manifest: {} as SceneManifestV2,
-      units: [],
+      householdIndex: {
+        buildingId: ALPHA,
+        coverage: 0,
+        storeys: [],
+      },
     });
     expect(result).toBe(loadingBeta);
     expect(result.building.selectedId).toBe(BETA);
@@ -133,5 +137,11 @@ describe("application reducer", () => {
       mode: "overview",
     });
     expect(overviewState.environmentOpacity).toBe(1.0);
+
+    const unitsState = reduceAppState(overviewState, {
+      type: "ENTER_MODE",
+      mode: "units",
+    });
+    expect(unitsState.environmentOpacity).toBe(0.25);
   });
 });

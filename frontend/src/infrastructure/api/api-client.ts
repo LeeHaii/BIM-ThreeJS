@@ -2,6 +2,7 @@ import {
   adminOccupancySchema,
   buildingDetailSchema,
   buildingSummarySchema,
+  householdIndexSchema,
   occupancyViewSchema,
   pageSchema,
   sceneManifestV2Schema,
@@ -15,6 +16,7 @@ import type {
   CreateBuildingInput,
   CreateOccupancyInput,
   CreateUnitInput,
+  HouseholdIndex,
   OccupancyView,
   Page,
   SceneManifestV2,
@@ -123,6 +125,17 @@ export class ApiClient {
     return this.request(
       `/buildings/${buildingId}/units?${parameters.toString()}`,
       pageSchema(unitSummarySchema),
+      signal,
+    );
+  }
+
+  public getHouseholdIndex(
+    buildingId: BuildingId,
+    signal?: AbortSignal,
+  ): Promise<HouseholdIndex> {
+    return this.request(
+      `/buildings/${buildingId}/households`,
+      householdIndexSchema,
       signal,
     );
   }

@@ -2,10 +2,12 @@ import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import type {
   CameraPose,
+  HouseholdStorey,
   PropertyEntry,
   PropertyGroup,
   SceneLayerManifest,
   SceneManifestV2,
+  UnitId,
 } from "@bim/shared";
 import CameraControls from "camera-controls";
 import * as THREE from "three";
@@ -32,6 +34,26 @@ const hoverMaterial: FRAGS.MaterialDefinition = {
   transparent: true,
   renderedFaces: FRAGS.RenderedFaces.TWO,
   preserveOriginalMaterial: false,
+};
+
+const unitFloorMaterial: FRAGS.MaterialDefinition = {
+  color: new THREE.Color("#f45b69"),
+  opacity: 0.32,
+  transparent: true,
+  renderedFaces: FRAGS.RenderedFaces.TWO,
+  preserveOriginalMaterial: false,
+  depthWrite: false,
+  customId: "household-floor",
+};
+
+const unitSelectedMaterial: FRAGS.MaterialDefinition = {
+  color: new THREE.Color("#18a0d8"),
+  opacity: 0.7,
+  transparent: true,
+  renderedFaces: FRAGS.RenderedFaces.TWO,
+  preserveOriginalMaterial: false,
+  depthWrite: false,
+  customId: "household-selected",
 };
 
 const viewUpdateIntervalMs = 32;
@@ -388,6 +410,20 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
   private readonly fragmentLayerIds = new Set<string>();
   private hovered: { modelId: string; localId: number } | undefined;
   private selected: { modelId: string; localId: number } | undefined;
+  private activeStoreyItems: Record<string, Set<number>> = {};
+  private readonly activeUnitByElement = new Map<string, UnitId>();
+  private readonly activeUnitElements = new Map<
+    UnitId,
+    { readonly layerId: string; readonly localIds: readonly number[] }
+  >();
+  private readonly activeUnitBoxes = new Map<UnitId, THREE.Box3>();
+  private readonly unitOverlayMaterials = new Map<
+    UnitId,
+    THREE.MeshBasicMaterial[]
+  >();
+  private unitOverlayGroup: THREE.Group | undefined;
+  private selectedUnitId: UnitId | undefined;
+  private unitClippingPlanes: THREE.Plane[] = [];
   private hoverToken = 0;
 
   public async initialize(
@@ -430,6 +466,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
       powerPreference: "high-performance",
     });
     world.renderer.three.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    world.renderer.three.localClippingEnabled = true;
     world.camera = new OBC.SimpleCamera(components);
     components.init();
     components.get(OBC.Grids).create(world);
@@ -502,6 +539,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
             model.object.matrix.fromArray(layer.transform);
             model.object.matrixAutoUpdate = false;
             model.object.updateMatrixWorld(true);
+            model.getClippingPlanesEvent = () => this.unitClippingPlanes;
             await model.setVisible(undefined, layer.defaultVisible);
             this.fragmentLayerIds.add(layer.id);
           } else {
@@ -661,6 +699,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
   }
 
   public async clearHover(): Promise<void> {
+    this.setCanvasCursor("default");
     if (this.hovered === undefined || this.fragments === undefined) return;
     const { modelId, localId } = this.hovered;
     this.hovered = undefined;
@@ -677,6 +716,144 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await this.fragments.core.update();
   }
 
+  public async showStorey(
+    storey: HouseholdStorey,
+    cutRatio: 0.2 | 0.5 = 0.5,
+    adjacentStorey?: HouseholdStorey,
+  ): Promise<void> {
+    const fragments = this.requireFragments();
+    await this.clearStoreyView();
+
+    const storeyItems: Record<string, Set<number>> = {};
+    const storeyBox = new THREE.Box3();
+    let hasBounds = false;
+
+    for (const unit of storey.units) {
+      const layerId = unit.layerId;
+      if (layerId === undefined || unit.modelLocalIds.length === 0) continue;
+      const model = fragments.list.get(layerId);
+      if (model === undefined) continue;
+      const localIds = unit.modelLocalIds.filter(Number.isInteger);
+      if (localIds.length === 0) continue;
+
+      let layerItems = storeyItems[layerId];
+      if (layerItems === undefined) {
+        layerItems = new Set<number>();
+        storeyItems[layerId] = layerItems;
+      }
+      localIds.forEach((localId) => {
+        layerItems.add(localId);
+        this.activeUnitByElement.set(`${layerId}:${String(localId)}`, unit.id);
+      });
+      this.activeUnitElements.set(unit.id, { layerId, localIds });
+
+      try {
+        const unitBox = await model.getMergedBox(localIds);
+        unitBox.applyMatrix4(model.object.matrixWorld);
+        if (!unitBox.isEmpty()) {
+          this.activeUnitBoxes.set(unit.id, unitBox.clone());
+          storeyBox.union(unitBox);
+          hasBounds = true;
+        }
+      } catch {
+        // A stale individual binding should not prevent the rest of the floor.
+      }
+    }
+
+    this.activeStoreyItems = storeyItems;
+    if (Object.keys(storeyItems).length === 0) return;
+
+    if (hasBounds) {
+      const floorTop = storeyBox.max.y;
+      const adjacentBox =
+        adjacentStorey === undefined
+          ? undefined
+          : await this.getStoreyMergedBox(adjacentStorey);
+      const measuredHeight =
+        adjacentBox === undefined
+          ? undefined
+          : Math.abs(adjacentBox.max.y - floorTop);
+      const floorHeight =
+        measuredHeight !== undefined &&
+        measuredHeight >= 2 &&
+        measuredHeight <= 10
+          ? measuredHeight
+          : 3.6;
+      const clipY = floorTop + floorHeight * cutRatio;
+      this.unitClippingPlanes = [
+        new THREE.Plane(new THREE.Vector3(0, -1, 0), clipY),
+      ];
+      this.setContextClippingPlanes(this.unitClippingPlanes);
+    }
+
+    await fragments.highlight(unitFloorMaterial, storeyItems);
+    await this.createUnitOverlays(storey);
+    await fragments.core.update(true);
+
+    if (hasBounds) await this.frameBox(storeyBox);
+  }
+
+  public async clearStoreyView(): Promise<void> {
+    this.hoverToken++;
+    this.setCanvasCursor("default");
+    const fragments = this.fragments;
+    const hasItems = Object.keys(this.activeStoreyItems).length > 0;
+    if (fragments !== undefined && hasItems) {
+      await fragments.resetHighlight(this.activeStoreyItems);
+    }
+    this.activeStoreyItems = {};
+    this.activeUnitByElement.clear();
+    this.activeUnitElements.clear();
+    this.activeUnitBoxes.clear();
+    this.disposeUnitOverlays();
+    this.selectedUnitId = undefined;
+    this.unitClippingPlanes = [];
+    this.setContextClippingPlanes(null);
+    await fragments?.core.update(true);
+  }
+
+  public async hoverUnit(clientX: number, clientY: number): Promise<void> {
+    const token = ++this.hoverToken;
+    const unitId = await this.unitAtScreenPoint(clientX, clientY);
+    if (token !== this.hoverToken) return;
+    this.setCanvasCursor(unitId === undefined ? "default" : "pointer");
+  }
+
+  public async pickUnit(
+    clientX: number,
+    clientY: number,
+  ): Promise<UnitId | undefined> {
+    const unitId = await this.unitAtScreenPoint(clientX, clientY);
+    if (unitId === undefined) return undefined;
+    await this.selectUnitVisual(unitId);
+    return unitId;
+  }
+
+  public async selectUnitVisual(unitId: UnitId): Promise<void> {
+    const fragments = this.fragments;
+    const target = this.activeUnitElements.get(unitId);
+    if (fragments === undefined || target === undefined) return;
+    if (this.selectedUnitId === unitId) return;
+
+    if (Object.keys(this.activeStoreyItems).length > 0) {
+      await fragments.resetHighlight(this.activeStoreyItems);
+      await fragments.highlight(unitFloorMaterial, this.activeStoreyItems);
+    }
+    await fragments.highlight(unitSelectedMaterial, {
+      [target.layerId]: new Set(target.localIds),
+    });
+    for (const [candidateId, materials] of this.unitOverlayMaterials) {
+      const selected = candidateId === unitId;
+      for (const material of materials) {
+        material.color.set(selected ? "#18a0d8" : "#f45b69");
+        material.opacity = selected ? 0.72 : 0.4;
+        material.needsUpdate = true;
+      }
+    }
+    this.selectedUnitId = unitId;
+    await fragments.core.update();
+  }
+
   public setEnvironmentOpacity(opacity: number): void {
     const clamped = Math.max(0, Math.min(1, opacity));
     for (const scene of this.contextLayers.values()) {
@@ -690,12 +867,19 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
               if (mat.userData["originalTransparent"] === undefined) {
                 mat.userData["originalTransparent"] = mat.transparent;
                 mat.userData["originalOpacity"] = mat.opacity;
+                mat.userData["originalDepthWrite"] = mat.depthWrite;
               }
               mat.transparent =
                 clamped < 1 || Boolean(mat.userData["originalTransparent"]);
               const origOpacity =
                 (mat.userData["originalOpacity"] as number | undefined) ?? 1;
               mat.opacity = clamped * origOpacity;
+              mat.depthWrite =
+                clamped < 1
+                  ? false
+                  : ((mat.userData["originalDepthWrite"] as
+                      | boolean
+                      | undefined) ?? true);
               mat.needsUpdate = true;
             }
           }
@@ -756,6 +940,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
   public async dispose(): Promise<void> {
     await this.clearHover();
     await this.clearSelection();
+    await this.clearStoreyView();
     for (const object of this.contextLayers.values()) {
       object.removeFromParent();
       object.traverse((child) => {
@@ -796,10 +981,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
       const model = this.fragments.list.get(layerId);
       if (!model) continue;
       try {
-        const rawIds = await model.getLocalIds();
-        const ids: number[] = Array.isArray(rawIds)
-          ? (rawIds as number[])
-          : Array.from((rawIds as Iterable<number> | undefined) ?? []);
+        const ids = await model.getLocalIds();
         if (ids.length > 0) {
           modelTasks.push({ model, localIds: ids });
           totalElements += ids.length;
@@ -830,7 +1012,6 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
           });
 
           for (const item of itemsData) {
-            if (!item || typeof item !== "object") continue;
             const extracted = extractAllPropertiesAndGroups(
               item as Record<string, unknown>,
             );
@@ -854,12 +1035,10 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
                 k === "unit_no" ||
                 k === "unit_name"
               ) {
-                if (prop.value !== null && prop.value !== undefined) {
-                  const s = String(prop.value).trim();
-                  if (s.length > 0) {
-                    apartmentVal = s;
-                    break;
-                  }
+                const s = String(prop.value).trim();
+                if (s.length > 0) {
+                  apartmentVal = s;
+                  break;
                 }
               }
             }
@@ -929,12 +1108,10 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
                 k === "tang" ||
                 k === "tang_so"
               ) {
-                if (prop.value !== null && prop.value !== undefined) {
-                  const s = String(prop.value).trim();
-                  if (s.length > 0) {
-                    livingFloorVal = s;
-                    break;
-                  }
+                const s = String(prop.value).trim();
+                if (s.length > 0) {
+                  livingFloorVal = s;
+                  break;
                 }
               }
             }
@@ -947,12 +1124,10 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
                   k.includes("spatial container name") ||
                   k.includes("building storey")
                 ) {
-                  if (prop.value !== null && prop.value !== undefined) {
-                    const s = String(prop.value).trim();
-                    if (s.length > 0) {
-                      livingFloorVal = s;
-                      break;
-                    }
+                  const s = String(prop.value).trim();
+                  if (s.length > 0) {
+                    livingFloorVal = s;
+                    break;
                   }
                 }
               }
@@ -1067,5 +1242,235 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     if (this.fragments === undefined)
       throw new Error("Fragments manager is unavailable");
     return this.fragments;
+  }
+
+  private async unitAtScreenPoint(
+    clientX: number,
+    clientY: number,
+  ): Promise<UnitId | undefined> {
+    const world = this.world;
+    const fragments = this.fragments;
+    const renderer = world?.renderer;
+    if (world === undefined || fragments === undefined || renderer == null) {
+      return undefined;
+    }
+    const overlayUnitId = this.overlayUnitAtScreenPoint(
+      clientX,
+      clientY,
+      renderer.three.domElement,
+      world.camera.three,
+    );
+    if (overlayUnitId !== undefined) return overlayUnitId;
+    const result = await fragments.raycast({
+      camera: world.camera.three,
+      mouse: new THREE.Vector2(clientX, clientY),
+      dom: renderer.three.domElement,
+    });
+    if (result === undefined) return undefined;
+
+    const direct = this.activeUnitByElement.get(
+      `${result.fragments.modelId}:${String(result.localId)}`,
+    );
+    if (direct !== undefined) return direct;
+
+    let match: { readonly unitId: UnitId; readonly footprint: number } | undefined;
+    for (const [unitId, box] of this.activeUnitBoxes) {
+      const tolerance = 0.08;
+      if (
+        result.point.x < box.min.x - tolerance ||
+        result.point.x > box.max.x + tolerance ||
+        result.point.z < box.min.z - tolerance ||
+        result.point.z > box.max.z + tolerance
+      ) {
+        continue;
+      }
+      const footprint = (box.max.x - box.min.x) * (box.max.z - box.min.z);
+      if (match === undefined || footprint < match.footprint) {
+        match = { unitId, footprint };
+      }
+    }
+    return match?.unitId;
+  }
+
+  private setCanvasCursor(cursor: "default" | "pointer"): void {
+    const canvas = this.world?.renderer?.three.domElement;
+    if (canvas !== undefined) canvas.style.cursor = cursor;
+  }
+
+  private setContextClippingPlanes(planes: THREE.Plane[] | null): void {
+    for (const scene of this.contextLayers.values()) {
+      scene.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        const materialValue = object.material as
+          | THREE.Material
+          | THREE.Material[];
+        const materials = Array.isArray(materialValue)
+          ? materialValue
+          : [materialValue];
+        for (const material of materials) {
+          material.clippingPlanes = planes;
+          material.needsUpdate = true;
+        }
+      });
+    }
+  }
+
+  private async frameBox(box: THREE.Box3): Promise<void> {
+    const world = this.requireWorld();
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.z, 8) * 0.8;
+    await world.camera.controls.setLookAt(
+      center.x + radius,
+      center.y + Math.max(5, radius * 0.55),
+      center.z + radius,
+      center.x,
+      center.y,
+      center.z,
+      true,
+    );
+  }
+
+  private async getStoreyMergedBox(
+    storey: HouseholdStorey,
+  ): Promise<THREE.Box3 | undefined> {
+    const fragments = this.fragments;
+    if (fragments === undefined) return undefined;
+    const idsByLayer = new Map<string, number[]>();
+    for (const unit of storey.units) {
+      if (unit.layerId === undefined || unit.modelLocalIds.length === 0) continue;
+      const ids = idsByLayer.get(unit.layerId) ?? [];
+      ids.push(...unit.modelLocalIds);
+      idsByLayer.set(unit.layerId, ids);
+    }
+
+    const result = new THREE.Box3();
+    let found = false;
+    for (const [layerId, ids] of idsByLayer) {
+      const model = fragments.list.get(layerId);
+      if (model === undefined) continue;
+      try {
+        const box = await model.getMergedBox(ids);
+        box.applyMatrix4(model.object.matrixWorld);
+        if (!box.isEmpty()) {
+          result.union(box);
+          found = true;
+        }
+      } catch {
+        // Ignore a stale adjacent-floor binding and use the configured fallback.
+      }
+    }
+    return found ? result : undefined;
+  }
+
+  private async createUnitOverlays(storey: HouseholdStorey): Promise<void> {
+    const world = this.world;
+    const fragments = this.fragments;
+    if (world === undefined || fragments === undefined) return;
+    const group = new THREE.Group();
+    group.name = `household-overlays-${storey.code}`;
+
+    for (const unit of storey.units) {
+      if (unit.layerId === undefined || unit.modelLocalIds.length === 0) continue;
+      const model = fragments.list.get(unit.layerId);
+      if (model === undefined) continue;
+      try {
+        const itemsGeometry = await model.getItemsGeometry(
+          [...unit.modelLocalIds],
+        );
+        const materials: THREE.MeshBasicMaterial[] = [];
+        for (const meshDataList of itemsGeometry) {
+          for (const meshData of meshDataList) {
+            if (
+              meshData.positions === undefined ||
+              meshData.indices === undefined ||
+              meshData.transform === undefined
+            ) {
+              continue;
+            }
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute(
+              "position",
+              new THREE.Float32BufferAttribute(meshData.positions, 3),
+            );
+            geometry.setIndex(Array.from(meshData.indices));
+            geometry.computeVertexNormals();
+            const material = new THREE.MeshBasicMaterial({
+              color: "#f45b69",
+              opacity: 0.4,
+              transparent: true,
+              depthTest: true,
+              depthWrite: false,
+              side: THREE.DoubleSide,
+              polygonOffset: true,
+              polygonOffsetFactor: -2,
+              polygonOffsetUnits: -2,
+              clippingPlanes: this.unitClippingPlanes,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.name = `household-overlay-${unit.code}`;
+            mesh.userData["unitId"] = unit.id;
+            mesh.applyMatrix4(meshData.transform);
+            mesh.applyMatrix4(model.object.matrixWorld);
+            mesh.position.y += 0.08;
+            mesh.renderOrder = 10;
+            group.add(mesh);
+            materials.push(material);
+          }
+        }
+        if (materials.length > 0) {
+          this.unitOverlayMaterials.set(unit.id, materials);
+        }
+      } catch (error: unknown) {
+        console.warn(`Could not create overlay for ${unit.code}`, error);
+        // Fragment highlighting remains as a fallback for a stale geometry item.
+      }
+    }
+
+    if (group.children.length > 0) {
+      world.scene.three.add(group);
+      this.unitOverlayGroup = group;
+      console.debug(
+        "Household overlay geometry ready",
+        group.children.length,
+        new THREE.Box3().setFromObject(group),
+      );
+    }
+  }
+
+  private overlayUnitAtScreenPoint(
+    clientX: number,
+    clientY: number,
+    canvas: HTMLCanvasElement,
+    camera: THREE.Camera,
+  ): UnitId | undefined {
+    const group = this.unitOverlayGroup;
+    if (group === undefined) return undefined;
+    const bounds = canvas.getBoundingClientRect();
+    if (bounds.width === 0 || bounds.height === 0) return undefined;
+    const pointer = new THREE.Vector2(
+      ((clientX - bounds.left) / bounds.width) * 2 - 1,
+      -((clientY - bounds.top) / bounds.height) * 2 + 1,
+    );
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObject(group, true)[0];
+    const unitId = hit?.object.userData["unitId"];
+    return typeof unitId === "string" ? (unitId as UnitId) : undefined;
+  }
+
+  private disposeUnitOverlays(): void {
+    const group = this.unitOverlayGroup;
+    this.unitOverlayGroup = undefined;
+    if (group !== undefined) {
+      group.removeFromParent();
+      group.traverse((object) => {
+        if (object instanceof THREE.Mesh) object.geometry.dispose();
+      });
+    }
+    for (const materials of this.unitOverlayMaterials.values()) {
+      materials.forEach((material) => material.dispose());
+    }
+    this.unitOverlayMaterials.clear();
   }
 }

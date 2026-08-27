@@ -14,6 +14,8 @@ from bim_api.infrastructure.models import (
     PersonRecord,
     SceneVersionRecord,
     SiteRecord,
+    UnitBindingSetRecord,
+    UnitModelBindingRecord,
     UnitRecord,
     UserBuildingAccessRecord,
 )
@@ -27,9 +29,14 @@ from .schemas import (
     CreateBuildingRequest,
     CreateOccupancyRequest,
     CreateUnitRequest,
+    HouseholdIndexView,
+    HouseholdStoreyView,
+    HouseholdUnitView,
     OccupancyView,
     Page,
     SetupModelsRequest,
+    UnitBindingImportView,
+    UnitBindingIndexInput,
     UnitSummary,
     UpdateOccupancyRequest,
     UpdateUnitRequest,
@@ -175,6 +182,22 @@ class BuildingService:
 
         # Delete related records
         session.query(OccupancyRecord).filter(OccupancyRecord.building_id == building_id).delete()
+        model_version_ids = session.scalars(
+            select(ModelVersionRecord.id)
+            .join(ModelRecord, ModelRecord.id == ModelVersionRecord.model_id)
+            .where(ModelRecord.building_id == building_id)
+        ).all()
+        binding_set_ids = session.scalars(
+            select(UnitBindingSetRecord.id).where(
+                UnitBindingSetRecord.model_version_id.in_(model_version_ids)
+            )
+        ).all()
+        session.query(UnitModelBindingRecord).filter(
+            UnitModelBindingRecord.binding_set_id.in_(binding_set_ids)
+        ).delete(synchronize_session=False)
+        session.query(UnitBindingSetRecord).filter(
+            UnitBindingSetRecord.id.in_(binding_set_ids)
+        ).delete(synchronize_session=False)
         session.query(UnitRecord).filter(UnitRecord.building_id == building_id).delete()
         session.query(SceneVersionRecord).filter(
             SceneVersionRecord.building_id == building_id
@@ -258,6 +281,13 @@ class ModelService:
         ).all()
         for mv in existing_model_versions:
             mv.status = "retired"
+            binding_sets = session.scalars(
+                select(UnitBindingSetRecord).where(
+                    UnitBindingSetRecord.model_version_id == mv.id
+                )
+            ).all()
+            for binding_set in binding_sets:
+                binding_set.status = "retired"
 
         existing_scene_versions = session.scalars(
             select(SceneVersionRecord).where(SceneVersionRecord.building_id == building_id)
@@ -324,6 +354,55 @@ class ModelService:
             activated_at=now,
         )
         session.add(model_version)
+
+        binding_set_id: str | None = None
+        binding_index = payload.unit_binding_index
+        if binding_index is not None and binding_index.bindings:
+            units = session.scalars(
+                select(UnitRecord).where(UnitRecord.building_id == building_id)
+            ).all()
+            units_by_code = {unit.code.strip().upper(): unit for unit in units}
+            matched_unit_ids: set[str] = set()
+            binding_records: list[UnitModelBindingRecord] = []
+            candidate_binding_set_id = str(uuid4())
+            for seed in binding_index.bindings:
+                unit = units_by_code.get(seed.apartment_code.strip().upper())
+                if unit is None:
+                    continue
+                matched_unit_ids.add(unit.id)
+                if unit.area is None and seed.area is not None:
+                    unit.area = seed.area
+                binding_records.append(
+                    UnitModelBindingRecord(
+                        id=str(uuid4()),
+                        binding_set_id=candidate_binding_set_id,
+                        unit_id=unit.id,
+                        layer_id="layer-ifc-fragments",
+                        model_local_id=seed.express_id,
+                        global_id=seed.global_id,
+                        category=seed.category,
+                    )
+                )
+
+            if binding_records:
+                binding_set_id = candidate_binding_set_id
+                coverage = len(matched_unit_ids) / len(units) if units else 0.0
+                session.add(
+                    UnitBindingSetRecord(
+                        id=binding_set_id,
+                        model_version_id=model_version_id,
+                        source_hash=binding_index.source_hash,
+                        status="active",
+                        coverage=coverage,
+                        created_at=now,
+                    )
+                )
+                session.add_all(binding_records)
+                model_manifest["capabilities"] = [
+                    "bim",
+                    "properties",
+                    "unitBindings",
+                ]
 
         scene_manifest: dict[str, Any] = {
             "schemaVersion": "2.0",
@@ -447,6 +526,9 @@ class ModelService:
             },
         }
 
+        if binding_set_id is not None:
+            scene_manifest["unitBindingSetId"] = binding_set_id
+
         scene_version = SceneVersionRecord(
             id=scene_version_id,
             building_id=building_id,
@@ -461,6 +543,119 @@ class ModelService:
         session.commit()
 
         return scene_manifest
+
+    def import_unit_bindings(
+        self,
+        session: Session,
+        actor: Actor,
+        building_id: str,
+        payload: UnitBindingIndexInput,
+    ) -> UnitBindingImportView:
+        role = self.authorization.require_building_access(session, actor, building_id)
+        if role != "facility_admin":
+            raise ApiError(
+                403,
+                "forbidden",
+                "Only facility administrators can import unit bindings",
+            )
+
+        model_version = session.scalar(
+            select(ModelVersionRecord)
+            .join(ModelRecord, ModelRecord.id == ModelVersionRecord.model_id)
+            .where(
+                ModelRecord.building_id == building_id,
+                ModelVersionRecord.status == "active",
+            )
+        )
+        if model_version is None:
+            raise ApiError(404, "active_model_not_found", "No active model is available")
+
+        units = session.scalars(
+            select(UnitRecord).where(UnitRecord.building_id == building_id)
+        ).all()
+        units_by_code = {unit.code.strip().upper(): unit for unit in units}
+        binding_set_id = str(uuid4())
+        matched_unit_ids: set[str] = set()
+        unmatched_codes: set[str] = set()
+        bindings: list[UnitModelBindingRecord] = []
+
+        for seed in payload.bindings:
+            unit = units_by_code.get(seed.apartment_code.strip().upper())
+            if unit is None:
+                unmatched_codes.add(seed.apartment_code)
+                continue
+            matched_unit_ids.add(unit.id)
+            if unit.area is None and seed.area is not None:
+                unit.area = seed.area
+            bindings.append(
+                UnitModelBindingRecord(
+                    id=str(uuid4()),
+                    binding_set_id=binding_set_id,
+                    unit_id=unit.id,
+                    layer_id="layer-ifc-fragments",
+                    model_local_id=seed.express_id,
+                    global_id=seed.global_id,
+                    category=seed.category,
+                )
+            )
+
+        if not bindings:
+            raise ApiError(
+                422,
+                "unit_bindings_unmatched",
+                "The binding index did not match any apartment codes in this building",
+            )
+
+        active_sets = session.scalars(
+            select(UnitBindingSetRecord).where(
+                UnitBindingSetRecord.model_version_id == model_version.id,
+                UnitBindingSetRecord.status == "active",
+            )
+        ).all()
+        for active_set in active_sets:
+            active_set.status = "retired"
+        session.flush()
+
+        coverage = len(matched_unit_ids) / len(units) if units else 0.0
+        session.add(
+            UnitBindingSetRecord(
+                id=binding_set_id,
+                model_version_id=model_version.id,
+                source_hash=payload.source_hash,
+                status="active",
+                coverage=coverage,
+                created_at=datetime.now(UTC),
+            )
+        )
+        session.add_all(bindings)
+
+        model_manifest = dict(model_version.manifest)
+        capabilities = list(model_manifest.get("capabilities", []))
+        if "unitBindings" not in capabilities:
+            capabilities.append("unitBindings")
+        model_manifest["capabilities"] = capabilities
+        model_version.manifest = model_manifest
+
+        scene_version = session.scalar(
+            select(SceneVersionRecord).where(
+                SceneVersionRecord.building_id == building_id,
+                SceneVersionRecord.status == "active",
+            )
+        )
+        if scene_version is not None:
+            scene_manifest = dict(scene_version.manifest)
+            scene_manifest["unitBindingSetId"] = binding_set_id
+            scene_version.manifest = scene_manifest
+
+        session.commit()
+        return UnitBindingImportView(
+            binding_set_id=binding_set_id,
+            matched_unit_count=len(matched_unit_ids),
+            binding_count=len(bindings),
+            total_unit_count=len(units),
+            coverage=coverage,
+            unmatched_apartment_codes=sorted(unmatched_codes),
+        )
 
 
 class UnitService:
@@ -509,6 +704,100 @@ class UnitService:
             for record in records
         ]
         return Page(items=items, page=page, page_size=page_size, total=total)
+
+    def household_index(
+        self, session: Session, actor: Actor, building_id: str
+    ) -> HouseholdIndexView:
+        self.authorization.require_building_access(session, actor, building_id)
+        model_version_id = session.scalar(
+            select(ModelVersionRecord.id)
+            .join(ModelRecord, ModelRecord.id == ModelVersionRecord.model_id)
+            .where(
+                ModelRecord.building_id == building_id,
+                ModelVersionRecord.status == "active",
+            )
+        )
+        binding_set = None
+        if model_version_id is not None:
+            binding_set = session.scalar(
+                select(UnitBindingSetRecord).where(
+                    UnitBindingSetRecord.model_version_id == model_version_id,
+                    UnitBindingSetRecord.status == "active",
+                )
+            )
+
+        bindings_by_unit: dict[str, list[UnitModelBindingRecord]] = {}
+        if binding_set is not None:
+            binding_records = session.scalars(
+                select(UnitModelBindingRecord)
+                .where(UnitModelBindingRecord.binding_set_id == binding_set.id)
+                .order_by(UnitModelBindingRecord.model_local_id)
+            ).all()
+            for binding in binding_records:
+                bindings_by_unit.setdefault(binding.unit_id, []).append(binding)
+
+        units = session.scalars(
+            select(UnitRecord)
+            .where(UnitRecord.building_id == building_id, UnitRecord.status == "active")
+            .order_by(UnitRecord.storey_code, UnitRecord.code)
+        ).all()
+        units_by_storey: dict[str, list[HouseholdUnitView]] = {}
+        for unit in units:
+            bindings = bindings_by_unit.get(unit.id, [])
+            layer_id = bindings[0].layer_id if bindings else None
+            units_by_storey.setdefault(unit.storey_code, []).append(
+                HouseholdUnitView(
+                    id=unit.id,
+                    building_id=unit.building_id,
+                    code=unit.code,
+                    display_name=unit.display_name,
+                    unit_type=unit.unit_type,
+                    storey_code=unit.storey_code,
+                    status=unit.status,
+                    address=unit.address,
+                    area=unit.area,
+                    owner=unit.owner,
+                    certificate_number=unit.certificate_number,
+                    ownership_term=unit.ownership_term,
+                    layer_id=layer_id,
+                    model_local_ids=[binding.model_local_id for binding in bindings],
+                    global_ids=[
+                        binding.global_id
+                        for binding in bindings
+                        if binding.global_id is not None
+                    ],
+                )
+            )
+
+        def storey_sort_key(code: str) -> tuple[int, int | str]:
+            digits = "".join(character for character in code if character.isdigit())
+            if digits:
+                basement = code.strip().upper().startswith("B")
+                number = int(digits)
+                return (0, -number if basement else number)
+            return (1, code.casefold())
+
+        storeys = []
+        for code in sorted(units_by_storey, key=storey_sort_key):
+            storey_units = units_by_storey[code]
+            storeys.append(
+                HouseholdStoreyView(
+                    code=code,
+                    label=f"Floor {code.removeprefix('L')}",
+                    unit_count=len(storey_units),
+                    bound_unit_count=sum(
+                        1 for unit in storey_units if unit.model_local_ids
+                    ),
+                    units=storey_units,
+                )
+            )
+        return HouseholdIndexView(
+            building_id=building_id,
+            model_version_id=model_version_id,
+            binding_set_id=binding_set.id if binding_set is not None else None,
+            coverage=binding_set.coverage if binding_set is not None else 0.0,
+            storeys=storeys,
+        )
 
     def create(
         self, session: Session, actor: Actor, building_id: str, payload: CreateUnitRequest
@@ -652,6 +941,9 @@ class UnitService:
 
         session.query(OccupancyRecord).filter(
             OccupancyRecord.building_id == building_id, OccupancyRecord.unit_id == unit_id
+        ).delete()
+        session.query(UnitModelBindingRecord).filter(
+            UnitModelBindingRecord.unit_id == unit_id
         ).delete()
         session.delete(unit)
         session.commit()

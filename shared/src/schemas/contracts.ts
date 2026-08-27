@@ -3,6 +3,7 @@ import {
   buildingIdSchema,
   modelIdSchema,
   modelVersionIdSchema,
+  unitBindingSetIdSchema,
   unitIdSchema,
 } from "../domain/ids.js";
 
@@ -67,6 +68,28 @@ export const unitSummarySchema = z.object({
   owner: nonEmptyString.optional(),
   certificateNumber: nonEmptyString.optional(),
   ownershipTerm: nonEmptyString.optional(),
+});
+
+export const householdUnitSummarySchema = unitSummarySchema.extend({
+  layerId: nonEmptyString.optional(),
+  modelLocalIds: z.array(z.number().int().nonnegative()),
+  globalIds: z.array(nonEmptyString),
+});
+
+export const householdStoreySchema = z.object({
+  code: nonEmptyString,
+  label: nonEmptyString,
+  unitCount: z.number().int().nonnegative(),
+  boundUnitCount: z.number().int().nonnegative(),
+  units: z.array(householdUnitSummarySchema),
+});
+
+export const householdIndexSchema = z.object({
+  buildingId: buildingIdSchema,
+  modelVersionId: modelVersionIdSchema.optional(),
+  bindingSetId: unitBindingSetIdSchema.optional(),
+  coverage: z.number().min(0).max(1),
+  storeys: z.array(householdStoreySchema),
 });
 
 export const createUnitInputSchema = z.object({

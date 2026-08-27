@@ -2,6 +2,7 @@ import type {
   BuildingDetail,
   BuildingId,
   BuildingSummary,
+  HouseholdStorey,
   OccupancyView,
   SceneManifestV2,
   UnitId,
@@ -44,6 +45,10 @@ export interface AppState {
     readonly query: string;
     readonly status: LoadStatus;
     readonly items: readonly UnitSummary[];
+    readonly storeys: readonly HouseholdStorey[];
+    readonly selectedStoreyCode: string | undefined;
+    readonly clipRatio: 0.2 | 0.5;
+    readonly bindingCoverage: number;
     readonly selectedId: UnitId | undefined;
   };
   readonly occupancies: {
@@ -69,7 +74,16 @@ export const initialState: AppState = {
   },
   bimSelection: undefined,
   bimInspection: { status: "idle" },
-  units: { query: "", status: "idle", items: [], selectedId: undefined },
+  units: {
+    query: "",
+    status: "idle",
+    items: [],
+    storeys: [],
+    selectedStoreyCode: undefined,
+    clipRatio: 0.5,
+    bindingCoverage: 0,
+    selectedId: undefined,
+  },
   occupancies: { status: "idle", items: [] },
   environmentOpacity: 1.0,
   mode: "overview",

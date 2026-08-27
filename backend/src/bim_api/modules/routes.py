@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import subprocess
 from collections.abc import Iterator
@@ -17,9 +18,12 @@ from .schemas import (
     CreateBuildingRequest,
     CreateOccupancyRequest,
     CreateUnitRequest,
+    HouseholdIndexView,
     OccupancyView,
     Page,
     SetupModelsRequest,
+    UnitBindingImportView,
+    UnitBindingIndexInput,
     UnitSummary,
     UpdateOccupancyRequest,
     UpdateUnitRequest,
@@ -104,6 +108,20 @@ def search_units(
 
 
 @router.get(
+    "/buildings/{building_id}/households",
+    response_model=HouseholdIndexView,
+    response_model_exclude_none=True,
+)
+def household_index(
+    building_id: str,
+    request: Request,
+    session: SessionDependency,
+    actor: ActorDependency,
+) -> HouseholdIndexView:
+    return request.app.state.units.household_index(session, actor, building_id)
+
+
+@router.get(
     "/buildings/{building_id}/units/{unit_id}/occupancies",
     response_model=list[OccupancyView],
     response_model_exclude_none=True,
@@ -157,6 +175,25 @@ def setup_models(
     return request.app.state.models.setup_models(session, actor, building_id, payload)
 
 
+@router.post(
+    "/admin/buildings/{building_id}/models/active/unit-bindings",
+    response_model=UnitBindingImportView,
+)
+def import_unit_bindings(
+    building_id: str,
+    payload: UnitBindingIndexInput,
+    request: Request,
+    session: SessionDependency,
+    actor: ActorDependency,
+) -> UnitBindingImportView:
+    return request.app.state.models.import_unit_bindings(
+        session,
+        actor,
+        building_id,
+        payload,
+    )
+
+
 @router.post("/admin/buildings/{building_id}/models/upload")
 async def upload_models(
     building_id: str,
@@ -188,6 +225,7 @@ async def upload_models(
     target_gltf_path.write_bytes(gltf_bytes)
 
     ifc_filename = ifc_file.filename or "model.frag"
+    unit_binding_index: dict[str, object] | None = None
     if ifc_filename.lower().endswith(".ifc"):
         # Save raw IFC source file
         source_ifc_name = f"{building_id}-source.ifc"
@@ -244,6 +282,9 @@ async def upload_models(
         frag_bytes = target_ifc_path.read_bytes()
         ifc_byte_size = len(frag_bytes)
         ifc_hash = hashlib.sha256(frag_bytes).hexdigest()
+        binding_index_path = Path(f"{target_ifc_path}.unit-bindings.json")
+        if binding_index_path.exists():
+            unit_binding_index = json.loads(binding_index_path.read_text(encoding="utf-8"))
     else:
         # Direct .frag upload
         target_ifc_name = f"{building_id}-{ifc_filename}"
@@ -261,6 +302,7 @@ async def upload_models(
         env_asset_url=f"/model-assets/{target_gltf_name}",
         env_byte_size=len(gltf_bytes),
         env_content_hash=gltf_hash,
+        unit_binding_index=unit_binding_index,
     )
 
     return request.app.state.models.setup_models(session, actor, building_id, setup_request)

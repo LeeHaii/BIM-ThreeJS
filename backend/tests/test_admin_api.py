@@ -82,6 +82,53 @@ def test_admin_can_setup_models() -> None:
         assert manifest["layers"][1]["type"] == "gltf"
 
 
+def test_model_setup_imports_precomputed_unit_bindings() -> None:
+    with client() as api:
+        response = api.post(
+            f"/api/v1/admin/buildings/{ALPHA}/models/setup",
+            json={
+                "model_name": "Bound Architectural Model",
+                "ifc_asset_url": "/model-assets/bound.frag",
+                "ifc_byte_size": 12345,
+                "ifc_content_hash": TEST_HASH,
+                "env_name": "Test Environment",
+                "env_asset_url": "/model-assets/test-env.glb",
+                "env_byte_size": 67890,
+                "env_content_hash": TEST_HASH,
+                "unit_binding_index": {
+                    "schema_version": "1.0",
+                    "source_hash": TEST_HASH,
+                    "scanned_element_count": 1,
+                    "bindings": [
+                        {
+                            "apartment_code": "A-0101",
+                            "storey_code": "L01",
+                            "express_id": 4201,
+                            "global_id": "unit-a-0101",
+                            "category": "IfcSlab",
+                        }
+                    ],
+                },
+            },
+            headers={"X-Actor-Id": ADMIN},
+        )
+        assert response.status_code == 200
+        assert response.json()["unitBindingSetId"]
+
+        households = api.get(
+            f"/api/v1/buildings/{ALPHA}/households",
+            headers={"X-Actor-Id": ADMIN},
+        )
+        assert households.status_code == 200
+        payload = households.json()
+        assert payload["bindingSetId"] == response.json()["unitBindingSetId"]
+        assert payload["coverage"] > 0
+        floor = next(item for item in payload["storeys"] if item["code"] == "L01")
+        unit = next(item for item in floor["units"] if item["code"] == "A-0101")
+        assert unit["layerId"] == "layer-ifc-fragments"
+        assert unit["modelLocalIds"] == [4201]
+
+
 def test_admin_unit_and_occupancy_crud() -> None:
     with client() as api:
         # Create unit

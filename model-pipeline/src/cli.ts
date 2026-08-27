@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { convertIfcToFragments } from "./services/ifc-fragment-conversion-service.js";
+import { extractIfcUnitBindings } from "./services/ifc-unit-binding-service.js";
 import { validateOnboardingPackage } from "./services/onboarding-validator.js";
 
 async function main(): Promise<void> {
@@ -17,9 +18,20 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;
   }
+  if (command === "extract-unit-bindings") {
+    if (inputPath === undefined || outputPath === undefined) {
+      throw new Error(
+        "Usage: extract-unit-bindings <input.ifc> <output.json>",
+      );
+    }
+    const result = await extractIfcUnitBindings({ inputPath });
+    await writeFile(resolve(outputPath), `${JSON.stringify(result, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
   if (command !== "validate-onboarding" || inputPath === undefined) {
     throw new Error(
-      "Usage: validate-onboarding <package.json> | convert-ifc <input.ifc> <output.frag>",
+      "Usage: validate-onboarding <package.json> | convert-ifc <input.ifc> <output.frag> | extract-unit-bindings <input.ifc> <output.json>",
     );
   }
 

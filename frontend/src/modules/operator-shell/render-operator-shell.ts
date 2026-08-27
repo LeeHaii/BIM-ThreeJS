@@ -8,7 +8,7 @@ import { ViewerSessionController } from "../viewer-runtime/index.js";
 // ============================================================================
 // DEBUG TOOL: Set to false (or comment out) to easily disable debug tools
 // ============================================================================
-export const ENABLE_DEBUG_TOOLS = true;
+export const ENABLE_DEBUG_TOOLS: boolean = import.meta.env.DEV;
 
 const ICONS = {
   cube: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.12 6.4-8-4.5a2 2 0 0 0-2.24 0l-8 4.5A2 2 0 0 0 2 8.16v7.68a2 2 0 0 0 .88 1.76l8 4.5a2 2 0 0 0 2.24 0l8-4.5A2 2 0 0 0 22 15.84V8.16a2 2 0 0 0-.88-1.76Z"/><path d="m2.5 7.5 9.5 5.5 9.5-5.5"/><path d="M12 13v9"/></svg>`,
@@ -301,7 +301,7 @@ export function renderOperatorShell(
   canvasHost.addEventListener("pointermove", (event) => {
     if (event.buttons !== 0 || pointerStart !== undefined) return;
     const state = store.getState();
-    if (state.mode !== "bim") return;
+    if (state.mode !== "bim" && state.mode !== "units") return;
     lastHoverPos = { x: event.clientX, y: event.clientY };
     if (hoverRaf === undefined) {
       hoverRaf = requestAnimationFrame(() => {
@@ -327,7 +327,11 @@ export function renderOperatorShell(
       event.clientY - pointerStart.y,
     );
     pointerStart = undefined;
-    if (distance <= 4) void viewer.selectAt(event.clientX, event.clientY);
+    if (distance <= 4) {
+      void viewer.selectAt(event.clientX, event.clientY).then((unitId) => {
+        if (unitId !== undefined) void coordinator.selectUnit(unitId);
+      });
+    }
   });
   envOpacitySlider.addEventListener("input", () => {
     const pct = Number(envOpacitySlider.value);
@@ -420,7 +424,7 @@ export function renderOperatorShell(
       }
     });
 
-    debugRunBtn?.addEventListener("click", async () => {
+    debugRunBtn?.addEventListener("click", () => void (async () => {
       if (debugRunBtn.disabled) return;
       debugRunBtn.disabled = true;
       if (debugStatusRow) debugStatusRow.hidden = false;
@@ -480,7 +484,7 @@ export function renderOperatorShell(
       } finally {
         debugRunBtn.disabled = false;
       }
-    });
+    })());
 
     debugCopyBtn?.addEventListener("click", () => {
       if (lastGeneratedJson.length === 0) return;
@@ -623,7 +627,12 @@ export function renderOperatorShell(
       renderHouseholdPanel(
         panelContent,
         state,
-        (unitId) => void coordinator.selectUnit(unitId),
+        (storey) => void viewer.showStorey(storey, state.units.clipRatio),
+        (unitId) => {
+          void viewer.selectUnitVisual(unitId);
+          void coordinator.selectUnit(unitId);
+        },
+        (ratio) => void viewer.setUnitCutRatio(ratio),
       );
     }
 

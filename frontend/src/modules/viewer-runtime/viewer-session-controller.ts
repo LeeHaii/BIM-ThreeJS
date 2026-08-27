@@ -1,4 +1,4 @@
-import type { CameraPose } from "@bim/shared";
+import type { CameraPose, HouseholdStorey, UnitId } from "@bim/shared";
 import type { AppStore } from "../../app/app-store.js";
 import { ThatOpenViewerAdapter } from "../../infrastructure/thatopen/thatopen-viewer-adapter.js";
 import type { ApartmentSeedsGrouped } from "./viewer-port.js";
@@ -74,21 +74,29 @@ export class ViewerSessionController {
   }
 
   public async setMode(mode: "overview" | "bim" | "units"): Promise<void> {
-    if (mode !== "bim") {
+    if (mode !== "units") await this.adapter?.clearStoreyView();
+    if (mode === "overview") {
       await this.adapter?.clearSelection();
       await this.adapter?.clearHover();
       this.adapter?.setEnvironmentOpacity(1.0);
-    } else {
+      this.store.dispatch({ type: "SET_ENVIRONMENT_OPACITY", opacity: 1.0 });
+    } else if (mode === "bim") {
       this.adapter?.setEnvironmentOpacity(0.10);
       this.store.dispatch({ type: "SET_ENVIRONMENT_OPACITY", opacity: 0.10 });
+    } else {
+      await this.adapter?.clearSelection();
+      await this.adapter?.clearHover();
+      this.adapter?.setEnvironmentOpacity(0.25);
+      this.store.dispatch({ type: "SET_ENVIRONMENT_OPACITY", opacity: 0.25 });
     }
     this.store.dispatch({ type: "ENTER_MODE", mode });
   }
 
   public async hoverAt(clientX: number, clientY: number): Promise<void> {
     const state = this.store.getState();
-    if (state.mode !== "bim" || state.viewer.status !== "ready") return;
-    await this.adapter?.hover(clientX, clientY);
+    if (state.viewer.status !== "ready") return;
+    if (state.mode === "bim") await this.adapter?.hover(clientX, clientY);
+    if (state.mode === "units") await this.adapter?.hoverUnit(clientX, clientY);
   }
 
   public async clearHover(): Promise<void> {
@@ -100,9 +108,16 @@ export class ViewerSessionController {
     this.store.dispatch({ type: "SET_ENVIRONMENT_OPACITY", opacity });
   }
 
-  public async selectAt(clientX: number, clientY: number): Promise<void> {
+  public async selectAt(
+    clientX: number,
+    clientY: number,
+  ): Promise<UnitId | undefined> {
     const state = this.store.getState();
-    if (state.mode !== "bim" || state.viewer.status !== "ready") return;
+    if (state.viewer.status !== "ready") return undefined;
+    if (state.mode === "units") {
+      return this.adapter?.pickUnit(clientX, clientY);
+    }
+    if (state.mode !== "bim") return undefined;
     this.store.dispatch({
       type: "BIM_ELEMENT_LOADING",
       generation: state.generation,
@@ -112,17 +127,60 @@ export class ViewerSessionController {
       if (selection === undefined) {
         await this.adapter?.clearSelection();
         this.store.dispatch({ type: "CLEAR_BIM_SELECTION" });
-        return;
+        return undefined;
       }
       this.store.dispatch({
         type: "SELECT_BIM_ELEMENT",
         generation: state.generation,
         selection,
       });
+      return undefined;
     } catch {
       await this.adapter?.clearSelection();
       this.store.dispatch({ type: "CLEAR_BIM_SELECTION" });
+      return undefined;
     }
+  }
+
+  public async showStorey(
+    storey: HouseholdStorey,
+    cutRatio: 0.2 | 0.5,
+  ): Promise<void> {
+    const state = this.store.getState();
+    if (state.mode !== "units" || state.viewer.status !== "ready") return;
+    this.store.dispatch({
+      type: "SELECT_STOREY",
+      generation: state.generation,
+      storeyCode: storey.code,
+    });
+    const storeyIndex = state.units.storeys.findIndex(
+      (candidate) => candidate.code === storey.code,
+    );
+    const adjacentStorey =
+      state.units.storeys[storeyIndex + 1] ??
+      state.units.storeys[storeyIndex - 1];
+    await this.adapter?.showStorey(storey, cutRatio, adjacentStorey);
+  }
+
+  public async setUnitCutRatio(cutRatio: 0.2 | 0.5): Promise<void> {
+    this.store.dispatch({ type: "SET_UNIT_CUT_RATIO", cutRatio });
+    const state = this.store.getState();
+    const storey = state.units.storeys.find(
+      (candidate) => candidate.code === state.units.selectedStoreyCode,
+    );
+    if (storey !== undefined) {
+      const storeyIndex = state.units.storeys.findIndex(
+        (candidate) => candidate.code === storey.code,
+      );
+      const adjacentStorey =
+        state.units.storeys[storeyIndex + 1] ??
+        state.units.storeys[storeyIndex - 1];
+      await this.adapter?.showStorey(storey, cutRatio, adjacentStorey);
+    }
+  }
+
+  public selectUnitVisual(unitId: UnitId): Promise<void> {
+    return this.adapter?.selectUnitVisual(unitId) ?? Promise.resolve();
   }
 
   public resetCamera(): Promise<void> {

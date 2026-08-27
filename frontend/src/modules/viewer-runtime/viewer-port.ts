@@ -1,9 +1,11 @@
 import type {
   CameraPose,
   ElementRef,
+  HouseholdStorey,
   PropertyEntry,
   PropertyGroup,
   SceneManifestV2,
+  UnitId,
 } from "@bim/shared";
 
 export interface ViewerLayerState {
@@ -53,6 +55,15 @@ export interface OperatorViewerPort {
   clearSelection(): Promise<void>;
   hover(clientX: number, clientY: number): Promise<void>;
   clearHover(): Promise<void>;
+  showStorey(
+    storey: HouseholdStorey,
+    cutRatio?: 0.2 | 0.5,
+    adjacentStorey?: HouseholdStorey,
+  ): Promise<void>;
+  clearStoreyView(): Promise<void>;
+  hoverUnit(clientX: number, clientY: number): Promise<void>;
+  pickUnit(clientX: number, clientY: number): Promise<UnitId | undefined>;
+  selectUnitVisual(unitId: UnitId): Promise<void>;
   setEnvironmentOpacity(opacity: number): void;
   setLayerVisibility(layerId: string, visible: boolean): Promise<void>;
   setCamera(pose: CameraPose, animate?: boolean): Promise<void>;
@@ -64,4 +75,3 @@ export interface OperatorViewerPort {
     onProgress?: (processed: number, total: number) => void,
   ): Promise<ApartmentSeedsGrouped>;
 }
-

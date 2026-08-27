@@ -129,6 +129,45 @@ class UnitRecord(Base):
     ownership_term: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
+class UnitBindingSetRecord(Base):
+    __tablename__ = "unit_binding_sets"
+    __table_args__ = (
+        CheckConstraint("status in ('draft','active','retired')"),
+        Index(
+            "ix_one_active_binding_set_per_model_version",
+            "model_version_id",
+            unique=True,
+            sqlite_where=text("status = 'active'"),
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    model_version_id: Mapped[str] = mapped_column(
+        ForeignKey("model_versions.id"), index=True
+    )
+    source_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    coverage: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class UnitModelBindingRecord(Base):
+    __tablename__ = "unit_model_bindings"
+    __table_args__ = (
+        UniqueConstraint("binding_set_id", "layer_id", "model_local_id"),
+        Index("ix_unit_binding_lookup", "binding_set_id", "unit_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    binding_set_id: Mapped[str] = mapped_column(
+        ForeignKey("unit_binding_sets.id"), index=True
+    )
+    unit_id: Mapped[str] = mapped_column(ForeignKey("units.id"), index=True)
+    layer_id: Mapped[str] = mapped_column(String(100))
+    model_local_id: Mapped[int] = mapped_column()
+    global_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
 class UserRecord(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)

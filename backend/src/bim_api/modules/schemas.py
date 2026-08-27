@@ -40,6 +40,28 @@ class UnitSummary(ApiModel):
     ownership_term: str | None = None
 
 
+class HouseholdUnitView(UnitSummary):
+    layer_id: str | None = None
+    model_local_ids: list[int] = Field(default_factory=list)
+    global_ids: list[str] = Field(default_factory=list)
+
+
+class HouseholdStoreyView(ApiModel):
+    code: str
+    label: str
+    unit_count: int
+    bound_unit_count: int
+    units: list[HouseholdUnitView]
+
+
+class HouseholdIndexView(ApiModel):
+    building_id: str
+    model_version_id: str | None = None
+    binding_set_id: str | None = None
+    coverage: float = 0.0
+    storeys: list[HouseholdStoreyView]
+
+
 class CreateUnitRequest(ApiModel):
     code: str
     display_name: str
@@ -125,6 +147,33 @@ class UpdateOccupancyRequest(ApiModel):
     ends_at: str | None = None
 
 
+class UnitBindingSeedInput(ApiModel):
+    apartment_code: str
+    storey_code: str
+    express_id: int
+    global_id: str | None = None
+    category: str | None = None
+    area: float | None = None
+
+
+class UnitBindingIndexInput(ApiModel):
+    schema_version: str
+    source_hash: str
+    scanned_element_count: int = 0
+    bindings: list[UnitBindingSeedInput]
+    storeys: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class UnitBindingImportView(ApiModel):
+    binding_set_id: str
+    matched_unit_count: int
+    binding_count: int
+    total_unit_count: int
+    coverage: float
+    unmatched_apartment_codes: list[str] = Field(default_factory=list)
+
+
 class SetupModelsRequest(ApiModel):
     model_name: str = "Architectural Model"
     ifc_asset_url: str
@@ -134,6 +183,7 @@ class SetupModelsRequest(ApiModel):
     env_asset_url: str
     env_byte_size: int
     env_content_hash: str
+    unit_binding_index: UnitBindingIndexInput | None = None
 
 
 class ActionResponse(ApiModel):

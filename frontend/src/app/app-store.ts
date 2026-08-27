@@ -2,6 +2,7 @@ import type {
   BuildingDetail,
   BuildingId,
   BuildingSummary,
+  HouseholdIndex,
   OccupancyView,
   SceneManifestV2,
   UnitId,
@@ -29,7 +30,16 @@ export type AppCommand =
       readonly generation: number;
       readonly detail: BuildingDetail;
       readonly manifest: SceneManifestV2;
-      readonly units: readonly UnitSummary[];
+      readonly householdIndex: HouseholdIndex;
+    }
+  | {
+      readonly type: "SELECT_STOREY";
+      readonly generation: number;
+      readonly storeyCode: string;
+    }
+  | {
+      readonly type: "SET_UNIT_CUT_RATIO";
+      readonly cutRatio: 0.2 | 0.5;
     }
   | {
       readonly type: "BUILDING_FAILED";
@@ -149,6 +159,10 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
           query: "",
           status: "loading",
           items: [],
+          storeys: [],
+          selectedStoreyCode: undefined,
+          clipRatio: 0.5,
+          bindingCoverage: 0,
           selectedId: undefined,
         },
         occupancies: { status: "idle", items: [] },
@@ -174,7 +188,13 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
         units: {
           query: "",
           status: "ready",
-          items: command.units,
+          items: command.householdIndex.storeys.flatMap(
+            (storey) => storey.units,
+          ),
+          storeys: command.householdIndex.storeys,
+          selectedStoreyCode: undefined,
+          clipRatio: 0.5,
+          bindingCoverage: command.householdIndex.coverage,
           selectedId: undefined,
         },
       };
@@ -202,6 +222,24 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
       return {
         ...state,
         units: { ...state.units, status: "ready", items: command.units },
+      };
+    case "SELECT_STOREY":
+      if (!isCurrent(state, command.generation) || state.mode !== "units") {
+        return state;
+      }
+      return {
+        ...state,
+        units: {
+          ...state.units,
+          selectedStoreyCode: command.storeyCode,
+          selectedId: undefined,
+        },
+        occupancies: { status: "idle", items: [] },
+      };
+    case "SET_UNIT_CUT_RATIO":
+      return {
+        ...state,
+        units: { ...state.units, clipRatio: command.cutRatio },
       };
     case "SELECT_UNIT":
       if (!isCurrent(state, command.generation) || state.mode !== "units")
@@ -310,14 +348,23 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
       return {
         ...state,
         mode: command.mode,
-        environmentOpacity: command.mode === "bim" ? 0.10 : 1.0,
+        environmentOpacity:
+          command.mode === "bim"
+            ? 0.10
+            : command.mode === "units"
+              ? 0.25
+              : 1.0,
         bimSelection: command.mode === "bim" ? state.bimSelection : undefined,
         bimInspection:
           command.mode === "bim" ? state.bimInspection : { status: "idle" },
         units:
           command.mode === "units"
             ? state.units
-            : { ...state.units, selectedId: undefined },
+            : {
+                ...state.units,
+                selectedStoreyCode: undefined,
+                selectedId: undefined,
+              },
         occupancies:
           command.mode === "units"
             ? state.occupancies

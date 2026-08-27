@@ -40,17 +40,17 @@ export class AppCoordinator {
     const generation = this.store.getState().generation + 1;
     this.store.dispatch({ type: "OPEN_BUILDING", buildingId, generation });
     try {
-      const [detail, manifest, units] = await Promise.all([
+      const [detail, manifest, householdIndex] = await Promise.all([
         this.api.getBuilding(buildingId, controller.signal),
         this.api.getActiveSceneManifest(buildingId, controller.signal),
-        this.api.searchUnits(buildingId, "", controller.signal),
+        this.api.getHouseholdIndex(buildingId, controller.signal),
       ]);
       this.store.dispatch({
         type: "BUILDING_READY",
         generation,
         detail,
         manifest,
-        units: units.items,
+        householdIndex,
       });
     } catch (error: unknown) {
       const message = errorMessage(error);

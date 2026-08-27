@@ -1,4 +1,10 @@
-import type { BuildingId, ModelId, ModelVersionId, UnitId } from "./ids.js";
+import type {
+  BuildingId,
+  ModelId,
+  ModelVersionId,
+  UnitBindingSetId,
+  UnitId,
+} from "./ids.js";
 
 export interface ElementRef {
   readonly modelVersionId: ModelVersionId;
@@ -51,6 +57,28 @@ export interface UnitSummary {
   readonly owner?: string | undefined;
   readonly certificateNumber?: string | undefined;
   readonly ownershipTerm?: string | undefined;
+}
+
+export interface HouseholdUnitSummary extends UnitSummary {
+  readonly layerId?: string | undefined;
+  readonly modelLocalIds: readonly number[];
+  readonly globalIds: readonly string[];
+}
+
+export interface HouseholdStorey {
+  readonly code: string;
+  readonly label: string;
+  readonly unitCount: number;
+  readonly boundUnitCount: number;
+  readonly units: readonly HouseholdUnitSummary[];
+}
+
+export interface HouseholdIndex {
+  readonly buildingId: BuildingId;
+  readonly modelVersionId?: ModelVersionId | undefined;
+  readonly bindingSetId?: UnitBindingSetId | undefined;
+  readonly coverage: number;
+  readonly storeys: readonly HouseholdStorey[];
 }
 
 export interface OccupancyView {
