@@ -32,6 +32,8 @@ const hoverMaterial: FRAGS.MaterialDefinition = {
   preserveOriginalMaterial: false,
 };
 
+const viewUpdateIntervalMs = 32;
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown viewer error";
 }
@@ -432,6 +434,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
 
     const fragments = components.get(OBC.FragmentsManager);
     fragments.init(manifest.runtimeCompatibility.workerUrl);
+    fragments.core.settings.maxUpdateRate = viewUpdateIntervalMs;
     fragments.list.onItemSet.add(({ value: model }) => {
       model.useCamera(world.camera.three);
       world.scene.three.add(model.object);
@@ -439,6 +442,9 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     });
     world.camera.controls.addEventListener("update", () => {
       void fragments.core.update();
+    });
+    world.camera.controls.addEventListener("rest", () => {
+      void fragments.core.update(true);
     });
     const controls = world.camera.controls;
     controls.mouseButtons.left = CameraControls.ACTION.NONE;
@@ -558,7 +564,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await fragments.highlight(selectionMaterial, {
       [modelId]: new Set([result.localId]),
     });
-    await fragments.core.update(true);
+    await fragments.core.update();
     this.selected = { modelId, localId: result.localId };
     const [data] = await result.fragments.getItemsData([result.localId], {
       attributesDefault: true,
@@ -604,7 +610,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await this.fragments.resetHighlight({
       [modelId]: new Set([localId]),
     });
-    await this.fragments.core.update(true);
+    await this.fragments.core.update();
   }
 
   public async hover(clientX: number, clientY: number): Promise<void> {
@@ -648,7 +654,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await fragments.highlight(hoverMaterial, {
       [modelId]: new Set([localId]),
     });
-    await fragments.core.update(true);
+    await fragments.core.update();
     this.hovered = { modelId, localId };
   }
 
@@ -666,7 +672,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await this.fragments.resetHighlight({
       [modelId]: new Set([localId]),
     });
-    await this.fragments.core.update(true);
+    await this.fragments.core.update();
   }
 
   public setEnvironmentOpacity(opacity: number): void {
