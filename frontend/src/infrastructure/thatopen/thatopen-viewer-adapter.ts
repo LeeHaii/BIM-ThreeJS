@@ -79,7 +79,9 @@ function propertyValue(
   return undefined;
 }
 
-function cleanCategoryName(rawCategory: string | undefined): string | undefined {
+function cleanCategoryName(
+  rawCategory: string | undefined,
+): string | undefined {
   if (rawCategory === undefined || rawCategory.length === 0) return undefined;
   const trimmed = rawCategory.trim();
   if (trimmed.toUpperCase().startsWith("IFC")) {
@@ -103,7 +105,10 @@ function extractAllPropertiesAndGroups(
   }
 
   const allFlatProps: PropertyEntry[] = [];
-  const groupsMap = new Map<string, { label: string; entries: PropertyEntry[] }>();
+  const groupsMap = new Map<
+    string,
+    { label: string; entries: PropertyEntry[] }
+  >();
 
   function getOrCreateGroup(key: string, label: string) {
     let group = groupsMap.get(key);
@@ -202,7 +207,12 @@ function extractAllPropertiesAndGroups(
       }
     } else {
       for (const [k, v] of Object.entries(psetObj)) {
-        if (Array.isArray(v) || k.startsWith("_") || k === "Name" || k === "name") {
+        if (
+          Array.isArray(v) ||
+          k.startsWith("_") ||
+          k === "Name" ||
+          k === "name"
+        ) {
           continue;
         }
         const scalarVal = propertyValue(v);
@@ -272,7 +282,10 @@ function extractAllPropertiesAndGroups(
         allFlatProps.push({ key: `${label} Name`, value: name });
       }
       if (longName !== undefined) {
-        spatialGroup.entries.push({ key: `${label} Long Name`, value: longName });
+        spatialGroup.entries.push({
+          key: `${label} Long Name`,
+          value: longName,
+        });
         allFlatProps.push({ key: `${label} Long Name`, value: longName });
       }
       if (elevation !== undefined) {
@@ -421,6 +434,8 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     UnitId,
     THREE.MeshBasicMaterial[]
   >();
+  private readonly unitOverlayGeometries = new Set<THREE.BufferGeometry>();
+  private readonly unitOverlayIds = new WeakMap<THREE.Object3D, UnitId>();
   private unitOverlayGroup: THREE.Group | undefined;
   private selectedUnitId: UnitId | undefined;
   private unitClippingPlanes: THREE.Plane[] = [];
@@ -432,14 +447,8 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
   ): Promise<void> {
     this.manifest = manifest;
     this.defaultCamera = manifest.settings.defaultCamera;
-    await verifyRuntimeAsset(
-      manifest.runtimeCompatibility.workerUrl,
-      "worker",
-    );
-    await verifyRuntimeAsset(
-      manifest.runtimeCompatibility.wasmUrl,
-      "wasm",
-    );
+    await verifyRuntimeAsset(manifest.runtimeCompatibility.workerUrl, "worker");
+    await verifyRuntimeAsset(manifest.runtimeCompatibility.wasmUrl, "wasm");
 
     const components = new OBC.Components();
     const world = components
@@ -1134,7 +1143,9 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
             }
 
             if (!livingFloorVal) {
-              const match = /(?:[A-Za-z_-]*)(\d{1,2})(\d{2})$/.exec(apartmentVal);
+              const match = /(?:[A-Za-z_-]*)(\d{1,2})(\d{2})$/.exec(
+                apartmentVal,
+              );
               if (match?.[1]) {
                 livingFloorVal = String(parseInt(match[1], 10));
               } else {
@@ -1151,9 +1162,8 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
             }
 
             let floorKey = livingFloorVal ?? "Unknown";
-            const floorDigits = /(?:Floor|Level|Tầng|Storey|L)?\s*0*(\d+)/i.exec(
-              floorKey,
-            );
+            const floorDigits =
+              /(?:Floor|Level|Tầng|Storey|L)?\s*0*(\d+)/i.exec(floorKey);
             if (floorDigits?.[1]) {
               floorKey = floorDigits[1];
             }
@@ -1227,7 +1237,6 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     return sortedGrouped;
   }
 
-
   private requireWorld(): OBC.SimpleWorld<
     OBC.SimpleScene,
     OBC.SimpleCamera,
@@ -1273,7 +1282,9 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     );
     if (direct !== undefined) return direct;
 
-    let match: { readonly unitId: UnitId; readonly footprint: number } | undefined;
+    let match:
+      | { readonly unitId: UnitId; readonly footprint: number }
+      | undefined;
     for (const [unitId, box] of this.activeUnitBoxes) {
       const tolerance = 0.08;
       if (
@@ -1338,7 +1349,8 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     if (fragments === undefined) return undefined;
     const idsByLayer = new Map<string, number[]>();
     for (const unit of storey.units) {
-      if (unit.layerId === undefined || unit.modelLocalIds.length === 0) continue;
+      if (unit.layerId === undefined || unit.modelLocalIds.length === 0)
+        continue;
       const ids = idsByLayer.get(unit.layerId) ?? [];
       ids.push(...unit.modelLocalIds);
       idsByLayer.set(unit.layerId, ids);
@@ -1371,20 +1383,20 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     group.name = `household-overlays-${storey.code}`;
 
     for (const unit of storey.units) {
-      if (unit.layerId === undefined || unit.modelLocalIds.length === 0) continue;
+      if (unit.layerId === undefined || unit.modelLocalIds.length === 0)
+        continue;
       const model = fragments.list.get(unit.layerId);
       if (model === undefined) continue;
       try {
-        const itemsGeometry = await model.getItemsGeometry(
-          [...unit.modelLocalIds],
-        );
+        const itemsGeometry = await model.getItemsGeometry([
+          ...unit.modelLocalIds,
+        ]);
         const materials: THREE.MeshBasicMaterial[] = [];
         for (const meshDataList of itemsGeometry) {
           for (const meshData of meshDataList) {
             if (
               meshData.positions === undefined ||
-              meshData.indices === undefined ||
-              meshData.transform === undefined
+              meshData.indices === undefined
             ) {
               continue;
             }
@@ -1409,7 +1421,8 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
             });
             const mesh = new THREE.Mesh(geometry, material);
             mesh.name = `household-overlay-${unit.code}`;
-            mesh.userData["unitId"] = unit.id;
+            this.unitOverlayGeometries.add(geometry);
+            this.unitOverlayIds.set(mesh, unit.id);
             mesh.applyMatrix4(meshData.transform);
             mesh.applyMatrix4(model.object.matrixWorld);
             mesh.position.y += 0.08;
@@ -1430,11 +1443,6 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     if (group.children.length > 0) {
       world.scene.three.add(group);
       this.unitOverlayGroup = group;
-      console.debug(
-        "Household overlay geometry ready",
-        group.children.length,
-        new THREE.Box3().setFromObject(group),
-      );
     }
   }
 
@@ -1455,8 +1463,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(pointer, camera);
     const hit = raycaster.intersectObject(group, true)[0];
-    const unitId = hit?.object.userData["unitId"];
-    return typeof unitId === "string" ? (unitId as UnitId) : undefined;
+    return hit === undefined ? undefined : this.unitOverlayIds.get(hit.object);
   }
 
   private disposeUnitOverlays(): void {
@@ -1464,10 +1471,9 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     this.unitOverlayGroup = undefined;
     if (group !== undefined) {
       group.removeFromParent();
-      group.traverse((object) => {
-        if (object instanceof THREE.Mesh) object.geometry.dispose();
-      });
     }
+    for (const geometry of this.unitOverlayGeometries) geometry.dispose();
+    this.unitOverlayGeometries.clear();
     for (const materials of this.unitOverlayMaterials.values()) {
       materials.forEach((material) => material.dispose());
     }

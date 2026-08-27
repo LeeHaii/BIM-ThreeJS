@@ -18,6 +18,9 @@ feature code.
   picking/highlighting.
 - Current-building routes, deterministic switching, mode-gated BIM/household
   panels, and privacy-safe occupancy tables.
+- Precomputed IFC apartment bindings, household-by-floor navigation, 20%/50%
+  floor clipping, and clickable translucent apartment overlays without a
+  runtime whole-model scan.
 - `SceneManifestV2` active-scene API with runtime compatibility, asset hashes,
   cameras, transforms, property profiles, and per-building UI configuration.
 - Reproducible IFC-to-Fragments conversion using the included legal test fixture.
@@ -61,3 +64,5 @@ pnpm --filter @bim/model-pipeline convert:ifc tests/fixtures/small.ifc ../fronte
 ```
 
 See `docs/architecture/README.md` for the milestone map.
+The apartment indexing and viewer flow is documented in
+`docs/architecture/apartment-floor-index.md`.

@@ -12,6 +12,9 @@ Dependencies point inward. Domain code does not import HTTP, SQL, Three.js, That
 Open, Fragments, storage, or identity-provider types. Building differences enter
 the platform through records, manifests, profiles, bindings, and onboarding files.
 
+See [Apartment floor index](apartment-floor-index.md) for the offline IFC
+binding, floor clipping, and apartment selection flow.
+
 ## Delivery milestones
 
 1. Platform foundation and multi-building operational vertical slice (current).
