@@ -42,6 +42,10 @@ export interface BuildingSummary {
 export interface BuildingDetail extends BuildingSummary {
   readonly features: Readonly<Record<string, boolean>>;
   readonly activeModelVersionId?: ModelVersionId | undefined;
+  readonly permissions?: {
+    readonly manageUnits: boolean;
+    readonly manageOccupancies: boolean;
+  } | undefined;
 }
 
 export interface UnitSummary {

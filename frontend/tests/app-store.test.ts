@@ -90,6 +90,57 @@ describe("application reducer", () => {
     expect(result.bimInspection.status).toBe("idle");
   });
 
+  it("merges apartment updates without losing 3D binding metadata", () => {
+    const unit = {
+      id: "a1111111-1111-4111-8111-111111111701" as never,
+      buildingId: ALPHA,
+      code: "A-0701",
+      displayName: "Apartment 0701",
+      unitType: "apartment",
+      storeyCode: "L07",
+      status: "active" as const,
+      owner: "Previous owner",
+      layerId: "layer-ifc-fragments",
+      modelLocalIds: [114970],
+      globalIds: ["ifc-global-id"],
+    };
+    const state = {
+      ...initialState,
+      generation: 4,
+      building: { selectedId: ALPHA, detail: undefined, status: "ready" as const },
+      units: {
+        ...initialState.units,
+        items: [unit],
+        storeys: [
+          {
+            code: "L07",
+            label: "Floor 07",
+            unitCount: 1,
+            boundUnitCount: 1,
+            units: [unit],
+          },
+        ],
+        selectedId: unit.id,
+      },
+    };
+
+    const result = reduceAppState(state, {
+      type: "HOUSEHOLD_UNIT_UPDATED",
+      generation: 4,
+      unit: {
+        ...unit,
+        displayName: "Updated apartment",
+        owner: undefined,
+      },
+    });
+    const updated = result.units.storeys[0]?.units[0];
+    expect(updated?.displayName).toBe("Updated apartment");
+    expect(updated?.owner).toBeUndefined();
+    expect(updated?.layerId).toBe("layer-ifc-fragments");
+    expect(updated?.modelLocalIds).toEqual([114970]);
+    expect(updated?.globalIds).toEqual(["ifc-global-id"]);
+  });
+
   it("sets bimInspection to loading on BIM_ELEMENT_LOADING and ready on SELECT_BIM_ELEMENT", () => {
     const bimState = {
       ...initialState,

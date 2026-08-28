@@ -81,8 +81,8 @@ export class ViewerSessionController {
       this.adapter?.setEnvironmentOpacity(1.0);
       this.store.dispatch({ type: "SET_ENVIRONMENT_OPACITY", opacity: 1.0 });
     } else if (mode === "bim") {
-      this.adapter?.setEnvironmentOpacity(0.10);
-      this.store.dispatch({ type: "SET_ENVIRONMENT_OPACITY", opacity: 0.10 });
+      this.adapter?.setEnvironmentOpacity(0.1);
+      this.store.dispatch({ type: "SET_ENVIRONMENT_OPACITY", opacity: 0.1 });
     } else {
       await this.adapter?.clearSelection();
       await this.adapter?.clearHover();
@@ -165,17 +165,9 @@ export class ViewerSessionController {
   public async setUnitCutRatio(cutRatio: 0.2 | 0.5): Promise<void> {
     this.store.dispatch({ type: "SET_UNIT_CUT_RATIO", cutRatio });
     const state = this.store.getState();
-    const storey = state.units.storeys.find(
-      (candidate) => candidate.code === state.units.selectedStoreyCode,
-    );
-    if (storey !== undefined) {
-      const storeyIndex = state.units.storeys.findIndex(
-        (candidate) => candidate.code === storey.code,
-      );
-      const adjacentStorey =
-        state.units.storeys[storeyIndex + 1] ??
-        state.units.storeys[storeyIndex - 1];
-      await this.adapter?.showStorey(storey, cutRatio, adjacentStorey);
+    const storeyCode = state.units.selectedStoreyCode;
+    if (storeyCode !== undefined) {
+      await this.adapter?.setStoreyCutRatio(storeyCode, cutRatio);
     }
   }
 

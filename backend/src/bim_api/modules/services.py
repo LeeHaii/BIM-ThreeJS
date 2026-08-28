@@ -91,7 +91,7 @@ class BuildingService:
         return Page(items=items, page=page, page_size=page_size, total=total)
 
     def get(self, session: Session, actor: Actor, building_id: str) -> BuildingDetail:
-        self.authorization.require_building_access(session, actor, building_id)
+        role = self.authorization.require_building_access(session, actor, building_id)
         row = session.execute(
             select(BuildingRecord, SiteRecord)
             .join(SiteRecord, SiteRecord.id == BuildingRecord.site_id)
@@ -113,6 +113,10 @@ class BuildingService:
             locale=site.locale,
             features=building.configuration.get("features", {}),
             active_model_version_id=active_version_id,
+            permissions={
+                "manageUnits": role == "facility_admin",
+                "manageOccupancies": role == "facility_admin",
+            },
         )
 
     def create(
@@ -897,17 +901,17 @@ class UnitService:
             unit.storey_code = payload.storey_code.strip().upper()
         if payload.status is not None:
             unit.status = payload.status
-        if payload.address is not None:
+        if "address" in payload.model_fields_set:
             unit.address = payload.address.strip() if payload.address else None
-        if payload.area is not None:
+        if "area" in payload.model_fields_set:
             unit.area = payload.area
-        if payload.owner is not None:
+        if "owner" in payload.model_fields_set:
             unit.owner = payload.owner.strip() if payload.owner else None
-        if payload.certificate_number is not None:
+        if "certificate_number" in payload.model_fields_set:
             unit.certificate_number = (
                 payload.certificate_number.strip() if payload.certificate_number else None
             )
-        if payload.ownership_term is not None:
+        if "ownership_term" in payload.model_fields_set:
             unit.ownership_term = payload.ownership_term.strip() if payload.ownership_term else None
 
         session.commit()
@@ -1127,22 +1131,22 @@ class UnitService:
         if person is not None:
             if payload.display_name is not None:
                 person.display_name = payload.display_name.strip()
-            if payload.email is not None:
+            if "email" in payload.model_fields_set:
                 person.email = payload.email.strip() if payload.email else None
-            if payload.phone is not None:
+            if "phone" in payload.model_fields_set:
                 person.phone = payload.phone.strip() if payload.phone else None
-            if payload.citizen_id is not None:
+            if "citizen_id" in payload.model_fields_set:
                 person.citizen_id = payload.citizen_id.strip() if payload.citizen_id else None
-            if payload.date_of_birth is not None:
+            if "date_of_birth" in payload.model_fields_set:
                 person.date_of_birth = (
                     payload.date_of_birth.strip() if payload.date_of_birth else None
                 )
-            if payload.gender is not None:
+            if "gender" in payload.model_fields_set:
                 person.gender = payload.gender.strip() if payload.gender else None
 
         if payload.relationship_type is not None:
             occupancy.relationship_type = payload.relationship_type
-        if payload.residence_type is not None:
+        if "residence_type" in payload.model_fields_set:
             occupancy.residence_type = (
                 payload.residence_type.strip() if payload.residence_type else None
             )
@@ -1150,7 +1154,7 @@ class UnitService:
             occupancy.status = payload.status
         if payload.starts_at is not None:
             occupancy.starts_at = parse_datetime(payload.starts_at)
-        if payload.ends_at is not None:
+        if "ends_at" in payload.model_fields_set:
             occupancy.ends_at = parse_datetime(payload.ends_at) if payload.ends_at else None
 
         session.commit()

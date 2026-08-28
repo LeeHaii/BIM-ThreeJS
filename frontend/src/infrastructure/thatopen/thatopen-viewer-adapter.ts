@@ -97,6 +97,27 @@ interface ExtractedProperties {
   readonly category?: string | undefined;
 }
 
+interface PreparedStoreyView {
+  readonly storey: HouseholdStorey;
+  readonly items: Record<string, Set<number>>;
+  readonly unitByElement: ReadonlyMap<string, UnitId>;
+  readonly unitElements: ReadonlyMap<
+    UnitId,
+    { readonly layerId: string; readonly localIds: readonly number[] }
+  >;
+  readonly box?: THREE.Box3 | undefined;
+  readonly floorTop?: number | undefined;
+  readonly floorHeight?: number | undefined;
+}
+
+interface UnitOverlayBundle {
+  readonly storeyCode: string;
+  readonly group: THREE.Group;
+  readonly geometries: ReadonlySet<THREE.BufferGeometry>;
+  readonly materials: ReadonlyMap<UnitId, THREE.MeshBasicMaterial[]>;
+  readonly unitBoxes: ReadonlyMap<UnitId, THREE.Box3>;
+}
+
 function extractAllPropertiesAndGroups(
   item: Record<string, unknown> | undefined,
 ): ExtractedProperties {
@@ -430,15 +451,29 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     { readonly layerId: string; readonly localIds: readonly number[] }
   >();
   private readonly activeUnitBoxes = new Map<UnitId, THREE.Box3>();
-  private readonly unitOverlayMaterials = new Map<
-    UnitId,
-    THREE.MeshBasicMaterial[]
-  >();
-  private readonly unitOverlayGeometries = new Set<THREE.BufferGeometry>();
   private readonly unitOverlayIds = new WeakMap<THREE.Object3D, UnitId>();
-  private unitOverlayGroup: THREE.Group | undefined;
+  private readonly storeyBounds = new Map<
+    string,
+    Promise<THREE.Box3 | undefined>
+  >();
+  private readonly unitOverlayCache = new Map<string, UnitOverlayBundle>();
+  private readonly unitOverlayBuilds = new Map<
+    string,
+    Promise<UnitOverlayBundle>
+  >();
+  private activeUnitOverlay: UnitOverlayBundle | undefined;
+  private activeStoreyCode: string | undefined;
+  private activeFloorTop: number | undefined;
+  private activeFloorHeight: number | undefined;
   private selectedUnitId: UnitId | undefined;
+  private readonly unitClippingPlane = new THREE.Plane(
+    new THREE.Vector3(0, -1, 0),
+    0,
+  );
   private unitClippingPlanes: THREE.Plane[] = [];
+  private unitCutRatio: 0.2 | 0.5 = 0.5;
+  private storeyTransitionToken = 0;
+  private storeyCommitQueue: Promise<void> = Promise.resolve();
   private hoverToken = 0;
 
   public async initialize(
@@ -731,94 +766,112 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     adjacentStorey?: HouseholdStorey,
   ): Promise<void> {
     const fragments = this.requireFragments();
-    await this.clearStoreyView();
+    this.unitCutRatio = cutRatio;
+    const transitionToken = ++this.storeyTransitionToken;
+    const prepared = await this.prepareStoreyView(storey, adjacentStorey);
+    if (transitionToken !== this.storeyTransitionToken) return;
 
-    const storeyItems: Record<string, Set<number>> = {};
-    const storeyBox = new THREE.Box3();
-    let hasBounds = false;
-
-    for (const unit of storey.units) {
-      const layerId = unit.layerId;
-      if (layerId === undefined || unit.modelLocalIds.length === 0) continue;
-      const model = fragments.list.get(layerId);
-      if (model === undefined) continue;
-      const localIds = unit.modelLocalIds.filter(Number.isInteger);
-      if (localIds.length === 0) continue;
-
-      let layerItems = storeyItems[layerId];
-      if (layerItems === undefined) {
-        layerItems = new Set<number>();
-        storeyItems[layerId] = layerItems;
+    const committed = await this.enqueueStoreyCommit(async () => {
+      if (transitionToken !== this.storeyTransitionToken) return false;
+      if (Object.keys(this.activeStoreyItems).length > 0) {
+        await fragments.resetHighlight(this.activeStoreyItems);
       }
-      localIds.forEach((localId) => {
-        layerItems.add(localId);
-        this.activeUnitByElement.set(`${layerId}:${String(localId)}`, unit.id);
-      });
-      this.activeUnitElements.set(unit.id, { layerId, localIds });
+      if (transitionToken !== this.storeyTransitionToken) return false;
 
-      try {
-        const unitBox = await model.getMergedBox(localIds);
-        unitBox.applyMatrix4(model.object.matrixWorld);
-        if (!unitBox.isEmpty()) {
-          this.activeUnitBoxes.set(unit.id, unitBox.clone());
-          storeyBox.union(unitBox);
-          hasBounds = true;
-        }
-      } catch {
-        // A stale individual binding should not prevent the rest of the floor.
+      this.detachActiveUnitOverlay();
+      this.activeStoreyItems = prepared.items;
+      this.activeUnitByElement.clear();
+      this.activeUnitElements.clear();
+      this.activeUnitBoxes.clear();
+      for (const [key, unitId] of prepared.unitByElement) {
+        this.activeUnitByElement.set(key, unitId);
       }
-    }
+      for (const [unitId, elements] of prepared.unitElements) {
+        this.activeUnitElements.set(unitId, elements);
+      }
+      this.activeStoreyCode = prepared.storey.code;
+      this.activeFloorTop = prepared.floorTop;
+      this.activeFloorHeight = prepared.floorHeight;
+      this.selectedUnitId = undefined;
 
-    this.activeStoreyItems = storeyItems;
-    if (Object.keys(storeyItems).length === 0) return;
+      if (
+        prepared.floorTop !== undefined &&
+        prepared.floorHeight !== undefined
+      ) {
+        this.activateStoreyClipping(
+          prepared.floorTop + prepared.floorHeight * this.unitCutRatio,
+        );
+      } else {
+        this.deactivateStoreyClipping();
+      }
 
-    if (hasBounds) {
-      const floorTop = storeyBox.max.y;
-      const adjacentBox =
-        adjacentStorey === undefined
-          ? undefined
-          : await this.getStoreyMergedBox(adjacentStorey);
-      const measuredHeight =
-        adjacentBox === undefined
-          ? undefined
-          : Math.abs(adjacentBox.max.y - floorTop);
-      const floorHeight =
-        measuredHeight !== undefined &&
-        measuredHeight >= 2 &&
-        measuredHeight <= 10
-          ? measuredHeight
-          : 3.6;
-      const clipY = floorTop + floorHeight * cutRatio;
-      this.unitClippingPlanes = [
-        new THREE.Plane(new THREE.Vector3(0, -1, 0), clipY),
-      ];
-      this.setContextClippingPlanes(this.unitClippingPlanes);
-    }
+      const cachedOverlay = this.unitOverlayCache.get(prepared.storey.code);
+      if (cachedOverlay !== undefined) this.attachUnitOverlay(cachedOverlay);
+      if (Object.keys(prepared.items).length > 0) {
+        await fragments.highlight(unitFloorMaterial, prepared.items);
+      }
+      await fragments.core.update(true);
+      return transitionToken === this.storeyTransitionToken;
+    });
+    if (!committed) return;
 
-    await fragments.highlight(unitFloorMaterial, storeyItems);
-    await this.createUnitOverlays(storey);
-    await fragments.core.update(true);
+    const overlayTask = this.installUnitOverlay(
+      prepared.storey,
+      transitionToken,
+    );
+    const cameraTask =
+      prepared.box === undefined
+        ? Promise.resolve()
+        : this.frameBox(prepared.box, transitionToken);
+    await Promise.all([overlayTask, cameraTask]);
+  }
 
-    if (hasBounds) await this.frameBox(storeyBox);
+  public async setStoreyCutRatio(
+    storeyCode: string,
+    cutRatio: 0.2 | 0.5,
+  ): Promise<void> {
+    this.unitCutRatio = cutRatio;
+    await this.enqueueStoreyCommit(async () => {
+      if (
+        this.activeStoreyCode !== storeyCode ||
+        this.activeFloorTop === undefined ||
+        this.activeFloorHeight === undefined
+      ) {
+        return;
+      }
+      this.activateStoreyClipping(
+        this.activeFloorTop + this.activeFloorHeight * cutRatio,
+      );
+      await this.fragments?.core.update(true);
+    });
   }
 
   public async clearStoreyView(): Promise<void> {
+    const transitionToken = ++this.storeyTransitionToken;
     this.hoverToken++;
     this.setCanvasCursor("default");
-    const fragments = this.fragments;
-    const hasItems = Object.keys(this.activeStoreyItems).length > 0;
-    if (fragments !== undefined && hasItems) {
-      await fragments.resetHighlight(this.activeStoreyItems);
-    }
-    this.activeStoreyItems = {};
-    this.activeUnitByElement.clear();
-    this.activeUnitElements.clear();
-    this.activeUnitBoxes.clear();
-    this.disposeUnitOverlays();
-    this.selectedUnitId = undefined;
-    this.unitClippingPlanes = [];
-    this.setContextClippingPlanes(null);
-    await fragments?.core.update(true);
+    await this.enqueueStoreyCommit(async () => {
+      if (transitionToken !== this.storeyTransitionToken) return;
+      const fragments = this.fragments;
+      if (
+        fragments !== undefined &&
+        Object.keys(this.activeStoreyItems).length > 0
+      ) {
+        await fragments.resetHighlight(this.activeStoreyItems);
+      }
+      if (transitionToken !== this.storeyTransitionToken) return;
+      this.activeStoreyItems = {};
+      this.activeUnitByElement.clear();
+      this.activeUnitElements.clear();
+      this.activeUnitBoxes.clear();
+      this.detachActiveUnitOverlay();
+      this.activeStoreyCode = undefined;
+      this.activeFloorTop = undefined;
+      this.activeFloorHeight = undefined;
+      this.selectedUnitId = undefined;
+      this.deactivateStoreyClipping();
+      await fragments?.core.update(true);
+    });
   }
 
   public async hoverUnit(clientX: number, clientY: number): Promise<void> {
@@ -851,7 +904,8 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await fragments.highlight(unitSelectedMaterial, {
       [target.layerId]: new Set(target.localIds),
     });
-    for (const [candidateId, materials] of this.unitOverlayMaterials) {
+    for (const [candidateId, materials] of this.activeUnitOverlay?.materials ??
+      []) {
       const selected = candidateId === unitId;
       for (const material of materials) {
         material.color.set(selected ? "#18a0d8" : "#f45b69");
@@ -950,6 +1004,9 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     await this.clearHover();
     await this.clearSelection();
     await this.clearStoreyView();
+    await Promise.allSettled([...this.unitOverlayBuilds.values()]);
+    this.disposeUnitOverlayCache();
+    this.storeyBounds.clear();
     for (const object of this.contextLayers.values()) {
       object.removeFromParent();
       object.traverse((child) => {
@@ -1308,25 +1365,28 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     if (canvas !== undefined) canvas.style.cursor = cursor;
   }
 
-  private setContextClippingPlanes(planes: THREE.Plane[] | null): void {
-    for (const scene of this.contextLayers.values()) {
-      scene.traverse((object) => {
-        if (!(object instanceof THREE.Mesh)) return;
-        const materialValue = object.material as
-          | THREE.Material
-          | THREE.Material[];
-        const materials = Array.isArray(materialValue)
-          ? materialValue
-          : [materialValue];
-        for (const material of materials) {
-          material.clippingPlanes = planes;
-          material.needsUpdate = true;
-        }
-      });
+  private activateStoreyClipping(clipY: number): void {
+    this.unitClippingPlane.constant = clipY;
+    const renderer = this.world?.renderer;
+    if (this.unitClippingPlanes.length === 0) {
+      this.unitClippingPlanes = [this.unitClippingPlane];
+      renderer?.setPlane(true, this.unitClippingPlane, false);
+    } else {
+      renderer?.updateClippingPlanes();
     }
   }
 
-  private async frameBox(box: THREE.Box3): Promise<void> {
+  private deactivateStoreyClipping(): void {
+    if (this.unitClippingPlanes.length === 0) return;
+    this.world?.renderer?.setPlane(false, this.unitClippingPlane, false);
+    this.unitClippingPlanes = [];
+  }
+
+  private async frameBox(
+    box: THREE.Box3,
+    transitionToken: number,
+  ): Promise<void> {
+    if (transitionToken !== this.storeyTransitionToken) return;
     const world = this.requireWorld();
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
@@ -1342,108 +1402,244 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     );
   }
 
+  private async prepareStoreyView(
+    storey: HouseholdStorey,
+    adjacentStorey?: HouseholdStorey,
+  ): Promise<PreparedStoreyView> {
+    const fragments = this.fragments;
+    const items: Record<string, Set<number>> = {};
+    const unitByElement = new Map<string, UnitId>();
+    const unitElements = new Map<
+      UnitId,
+      { readonly layerId: string; readonly localIds: readonly number[] }
+    >();
+
+    if (fragments !== undefined) {
+      for (const unit of storey.units) {
+        const layerId = unit.layerId;
+        if (
+          layerId === undefined ||
+          fragments.list.get(layerId) === undefined
+        ) {
+          continue;
+        }
+        const localIds = [
+          ...new Set(unit.modelLocalIds.filter(Number.isInteger)),
+        ];
+        if (localIds.length === 0) continue;
+        const layerItems = items[layerId] ?? new Set<number>();
+        items[layerId] = layerItems;
+        for (const localId of localIds) {
+          layerItems.add(localId);
+          unitByElement.set(`${layerId}:${String(localId)}`, unit.id);
+        }
+        unitElements.set(unit.id, { layerId, localIds });
+      }
+    }
+
+    if (Object.keys(items).length === 0) {
+      return { storey, items, unitByElement, unitElements };
+    }
+    const [box, adjacentBox] = await Promise.all([
+      this.getStoreyMergedBox(storey),
+      adjacentStorey === undefined
+        ? Promise.resolve(undefined)
+        : this.getStoreyMergedBox(adjacentStorey),
+    ]);
+    if (box === undefined) {
+      return { storey, items, unitByElement, unitElements };
+    }
+    const floorTop = box.max.y;
+    const measuredHeight =
+      adjacentBox === undefined
+        ? undefined
+        : Math.abs(adjacentBox.max.y - floorTop);
+    const floorHeight =
+      measuredHeight !== undefined &&
+      measuredHeight >= 2 &&
+      measuredHeight <= 10
+        ? measuredHeight
+        : 3.6;
+    return {
+      storey,
+      items,
+      unitByElement,
+      unitElements,
+      box,
+      floorTop,
+      floorHeight,
+    };
+  }
+
   private async getStoreyMergedBox(
+    storey: HouseholdStorey,
+  ): Promise<THREE.Box3 | undefined> {
+    const cached = this.storeyBounds.get(storey.code);
+    if (cached !== undefined) return cached;
+    const pending = this.computeStoreyMergedBox(storey);
+    this.storeyBounds.set(storey.code, pending);
+    return pending;
+  }
+
+  private async computeStoreyMergedBox(
     storey: HouseholdStorey,
   ): Promise<THREE.Box3 | undefined> {
     const fragments = this.fragments;
     if (fragments === undefined) return undefined;
-    const idsByLayer = new Map<string, number[]>();
+    const idsByLayer = new Map<string, Set<number>>();
     for (const unit of storey.units) {
       if (unit.layerId === undefined || unit.modelLocalIds.length === 0)
         continue;
-      const ids = idsByLayer.get(unit.layerId) ?? [];
-      ids.push(...unit.modelLocalIds);
+      const ids = idsByLayer.get(unit.layerId) ?? new Set<number>();
+      unit.modelLocalIds.filter(Number.isInteger).forEach((id) => ids.add(id));
       idsByLayer.set(unit.layerId, ids);
     }
 
     const result = new THREE.Box3();
-    let found = false;
-    for (const [layerId, ids] of idsByLayer) {
-      const model = fragments.list.get(layerId);
-      if (model === undefined) continue;
-      try {
-        const box = await model.getMergedBox(ids);
-        box.applyMatrix4(model.object.matrixWorld);
-        if (!box.isEmpty()) {
-          result.union(box);
-          found = true;
+    const boxes = await Promise.all(
+      [...idsByLayer].map(async ([layerId, ids]) => {
+        const model = fragments.list.get(layerId);
+        if (model === undefined || ids.size === 0) return undefined;
+        try {
+          const box = await model.getMergedBox([...ids]);
+          box.applyMatrix4(model.object.matrixWorld);
+          return box.isEmpty() ? undefined : box;
+        } catch {
+          // Ignore stale bindings in one layer and keep the valid layers.
+          return undefined;
         }
-      } catch {
-        // Ignore a stale adjacent-floor binding and use the configured fallback.
-      }
+      }),
+    );
+    for (const box of boxes) {
+      if (box !== undefined) result.union(box);
     }
-    return found ? result : undefined;
+    return result.isEmpty() ? undefined : result;
   }
 
-  private async createUnitOverlays(storey: HouseholdStorey): Promise<void> {
+  private async installUnitOverlay(
+    storey: HouseholdStorey,
+    transitionToken: number,
+  ): Promise<void> {
+    const bundle = await this.getOrCreateUnitOverlay(storey);
+    if (transitionToken !== this.storeyTransitionToken) return;
+    await this.enqueueStoreyCommit(() => {
+      if (
+        transitionToken !== this.storeyTransitionToken ||
+        this.activeStoreyCode !== storey.code
+      ) {
+        return;
+      }
+      this.attachUnitOverlay(bundle);
+    });
+  }
+
+  private async getOrCreateUnitOverlay(
+    storey: HouseholdStorey,
+  ): Promise<UnitOverlayBundle> {
+    const cached = this.unitOverlayCache.get(storey.code);
+    if (cached !== undefined) {
+      this.unitOverlayCache.delete(storey.code);
+      this.unitOverlayCache.set(storey.code, cached);
+      return cached;
+    }
+    const activeBuild = this.unitOverlayBuilds.get(storey.code);
+    if (activeBuild !== undefined) return activeBuild;
+    const build = this.buildUnitOverlay(storey)
+      .then((bundle) => {
+        this.unitOverlayCache.set(storey.code, bundle);
+        this.evictUnitOverlayCache();
+        return bundle;
+      })
+      .finally(() => this.unitOverlayBuilds.delete(storey.code));
+    this.unitOverlayBuilds.set(storey.code, build);
+    return build;
+  }
+
+  private async buildUnitOverlay(
+    storey: HouseholdStorey,
+  ): Promise<UnitOverlayBundle> {
     const world = this.world;
     const fragments = this.fragments;
-    if (world === undefined || fragments === undefined) return;
     const group = new THREE.Group();
     group.name = `household-overlays-${storey.code}`;
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Map<UnitId, THREE.MeshBasicMaterial[]>();
+    const unitBoxes = new Map<UnitId, THREE.Box3>();
+    const bundle: UnitOverlayBundle = {
+      storeyCode: storey.code,
+      group,
+      geometries,
+      materials,
+      unitBoxes,
+    };
+    if (world === undefined || fragments === undefined) return bundle;
 
-    for (const unit of storey.units) {
-      if (unit.layerId === undefined || unit.modelLocalIds.length === 0)
-        continue;
-      const model = fragments.list.get(unit.layerId);
-      if (model === undefined) continue;
-      try {
-        const itemsGeometry = await model.getItemsGeometry([
-          ...unit.modelLocalIds,
-        ]);
-        const materials: THREE.MeshBasicMaterial[] = [];
-        for (const meshDataList of itemsGeometry) {
-          for (const meshData of meshDataList) {
-            if (
-              meshData.positions === undefined ||
-              meshData.indices === undefined
-            ) {
-              continue;
+    await Promise.all(
+      storey.units.map(async (unit) => {
+        if (unit.layerId === undefined || unit.modelLocalIds.length === 0)
+          return;
+        const model = fragments.list.get(unit.layerId);
+        if (model === undefined) return;
+        try {
+          const itemsGeometry = await model.getItemsGeometry([
+            ...unit.modelLocalIds,
+          ]);
+          const unitMaterials: THREE.MeshBasicMaterial[] = [];
+          const unitBox = new THREE.Box3();
+          for (const meshDataList of itemsGeometry) {
+            for (const meshData of meshDataList) {
+              if (
+                meshData.positions === undefined ||
+                meshData.indices === undefined
+              ) {
+                continue;
+              }
+              const geometry = new THREE.BufferGeometry();
+              geometry.setAttribute(
+                "position",
+                new THREE.Float32BufferAttribute(meshData.positions, 3),
+              );
+              geometry.setIndex(new THREE.BufferAttribute(meshData.indices, 1));
+              geometry.computeBoundingBox();
+              const material = new THREE.MeshBasicMaterial({
+                color: "#f45b69",
+                opacity: 0.4,
+                transparent: true,
+                depthTest: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                polygonOffset: true,
+                polygonOffsetFactor: -2,
+                polygonOffsetUnits: -2,
+              });
+              const mesh = new THREE.Mesh(geometry, material);
+              const worldTransform = model.object.matrixWorld
+                .clone()
+                .multiply(meshData.transform);
+              mesh.name = `household-overlay-${unit.code}`;
+              this.unitOverlayIds.set(mesh, unit.id);
+              mesh.applyMatrix4(worldTransform);
+              mesh.position.y += 0.08;
+              mesh.renderOrder = 10;
+              group.add(mesh);
+              geometries.add(geometry);
+              unitMaterials.push(material);
+              if (geometry.boundingBox !== null) {
+                unitBox.union(
+                  geometry.boundingBox.clone().applyMatrix4(worldTransform),
+                );
+              }
             }
-            const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute(
-              "position",
-              new THREE.Float32BufferAttribute(meshData.positions, 3),
-            );
-            geometry.setIndex(Array.from(meshData.indices));
-            geometry.computeVertexNormals();
-            const material = new THREE.MeshBasicMaterial({
-              color: "#f45b69",
-              opacity: 0.4,
-              transparent: true,
-              depthTest: true,
-              depthWrite: false,
-              side: THREE.DoubleSide,
-              polygonOffset: true,
-              polygonOffsetFactor: -2,
-              polygonOffsetUnits: -2,
-              clippingPlanes: this.unitClippingPlanes,
-            });
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.name = `household-overlay-${unit.code}`;
-            this.unitOverlayGeometries.add(geometry);
-            this.unitOverlayIds.set(mesh, unit.id);
-            mesh.applyMatrix4(meshData.transform);
-            mesh.applyMatrix4(model.object.matrixWorld);
-            mesh.position.y += 0.08;
-            mesh.renderOrder = 10;
-            group.add(mesh);
-            materials.push(material);
           }
+          if (unitMaterials.length > 0) materials.set(unit.id, unitMaterials);
+          if (!unitBox.isEmpty()) unitBoxes.set(unit.id, unitBox);
+        } catch (error: unknown) {
+          console.warn(`Could not create overlay for ${unit.code}`, error);
+          // Fragment highlighting remains as the low-cost fallback.
         }
-        if (materials.length > 0) {
-          this.unitOverlayMaterials.set(unit.id, materials);
-        }
-      } catch (error: unknown) {
-        console.warn(`Could not create overlay for ${unit.code}`, error);
-        // Fragment highlighting remains as a fallback for a stale geometry item.
-      }
-    }
-
-    if (group.children.length > 0) {
-      world.scene.three.add(group);
-      this.unitOverlayGroup = group;
-    }
+      }),
+    );
+    return bundle;
   }
 
   private overlayUnitAtScreenPoint(
@@ -1452,7 +1648,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     canvas: HTMLCanvasElement,
     camera: THREE.Camera,
   ): UnitId | undefined {
-    const group = this.unitOverlayGroup;
+    const group = this.activeUnitOverlay?.group;
     if (group === undefined) return undefined;
     const bounds = canvas.getBoundingClientRect();
     if (bounds.width === 0 || bounds.height === 0) return undefined;
@@ -1462,21 +1658,76 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     );
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(pointer, camera);
-    const hit = raycaster.intersectObject(group, true)[0];
+    const hit = raycaster
+      .intersectObject(group, true)
+      .find(({ point }) =>
+        this.unitClippingPlanes.every(
+          (plane) => plane.distanceToPoint(point) >= 0,
+        ),
+      );
     return hit === undefined ? undefined : this.unitOverlayIds.get(hit.object);
   }
 
-  private disposeUnitOverlays(): void {
-    const group = this.unitOverlayGroup;
-    this.unitOverlayGroup = undefined;
-    if (group !== undefined) {
-      group.removeFromParent();
+  private attachUnitOverlay(bundle: UnitOverlayBundle): void {
+    if (this.activeUnitOverlay !== bundle) {
+      this.detachActiveUnitOverlay();
+      this.world?.scene.three.add(bundle.group);
+      this.activeUnitOverlay = bundle;
     }
-    for (const geometry of this.unitOverlayGeometries) geometry.dispose();
-    this.unitOverlayGeometries.clear();
-    for (const materials of this.unitOverlayMaterials.values()) {
+    this.activeUnitBoxes.clear();
+    for (const [unitId, box] of bundle.unitBoxes) {
+      this.activeUnitBoxes.set(unitId, box);
+    }
+    for (const [unitId, materials] of bundle.materials) {
+      const selected = unitId === this.selectedUnitId;
+      for (const material of materials) {
+        material.color.set(selected ? "#18a0d8" : "#f45b69");
+        material.opacity = selected ? 0.72 : 0.4;
+      }
+    }
+  }
+
+  private detachActiveUnitOverlay(): void {
+    this.activeUnitOverlay?.group.removeFromParent();
+    this.activeUnitOverlay = undefined;
+    this.activeUnitBoxes.clear();
+  }
+
+  private evictUnitOverlayCache(): void {
+    const maximumCachedFloors = 3;
+    while (this.unitOverlayCache.size > maximumCachedFloors) {
+      const candidate = [...this.unitOverlayCache.entries()].find(
+        ([, bundle]) => bundle !== this.activeUnitOverlay,
+      );
+      if (candidate === undefined) return;
+      const [storeyCode, bundle] = candidate;
+      this.unitOverlayCache.delete(storeyCode);
+      this.disposeUnitOverlayBundle(bundle);
+    }
+  }
+
+  private disposeUnitOverlayBundle(bundle: UnitOverlayBundle): void {
+    bundle.group.removeFromParent();
+    for (const geometry of bundle.geometries) geometry.dispose();
+    for (const materials of bundle.materials.values()) {
       materials.forEach((material) => material.dispose());
     }
-    this.unitOverlayMaterials.clear();
+  }
+
+  private disposeUnitOverlayCache(): void {
+    this.detachActiveUnitOverlay();
+    for (const bundle of this.unitOverlayCache.values()) {
+      this.disposeUnitOverlayBundle(bundle);
+    }
+    this.unitOverlayCache.clear();
+  }
+
+  private enqueueStoreyCommit<T>(operation: () => T | Promise<T>): Promise<T> {
+    const result = this.storeyCommitQueue.then(operation, operation);
+    this.storeyCommitQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 }

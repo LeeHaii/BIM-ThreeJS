@@ -2,6 +2,7 @@ import type { AppCoordinator } from "../../app/app-coordinator.js";
 import type { AppState } from "../../app/app-state.js";
 import type { AppStore } from "../../app/app-store.js";
 import { renderBimPanel } from "../bim-inspection/render-bim-panel.js";
+import { createHouseholdEditor } from "../household-management/household-editor.js";
 import { renderHouseholdPanel } from "../units/render-household-panel.js";
 import { ViewerSessionController } from "../viewer-runtime/index.js";
 
@@ -194,6 +195,7 @@ export function renderOperatorShell(
             : ""
         }
       </main>
+      <div class="household-editor-host"></div>
       <div class="error-toast" role="alert" hidden></div>
     </div>`;
 
@@ -231,6 +233,15 @@ export function renderOperatorShell(
     root,
     ".error-toast",
     HTMLElement,
+  );
+  const householdEditorHost = requiredElement<HTMLElement>(
+    root,
+    ".household-editor-host",
+    HTMLElement,
+  );
+  const householdEditor = createHouseholdEditor(
+    householdEditorHost,
+    coordinator,
   );
   const buildingSelect = requiredElement<HTMLSelectElement>(
     root,
@@ -290,6 +301,7 @@ export function renderOperatorShell(
   let pointerStart: { readonly x: number; readonly y: number } | undefined;
   let hoverRaf: number | undefined;
   let lastHoverPos: { x: number; y: number } | undefined;
+  let lastViewerLayoutKey = "";
 
   for (const surface of root.querySelectorAll(".ui-surface")) {
     surface.addEventListener("pointerdown", (event) => event.stopPropagation());
@@ -633,6 +645,12 @@ export function renderOperatorShell(
           void coordinator.selectUnit(unitId);
         },
         (ratio) => void viewer.setUnitCutRatio(ratio),
+        {
+          canManage:
+            state.building.detail?.permissions?.manageUnits === true &&
+            state.building.detail.permissions.manageOccupancies,
+          openEditor: (unit, trigger) => householdEditor.open(unit, trigger),
+        },
       );
     }
 
@@ -644,13 +662,18 @@ export function renderOperatorShell(
         : formatBytes(state.viewer.loadedBytes, state.viewer.totalBytes);
     errorToast.hidden = state.error === undefined;
     errorToast.textContent = state.error ?? "";
-    requestAnimationFrame(() => viewer.resize());
+    const viewerLayoutKey = `${state.mode}:${String(popupWidth)}:${String(upperHeight)}`;
+    if (viewerLayoutKey !== lastViewerLayoutKey) {
+      lastViewerLayoutKey = viewerLayoutKey;
+      requestAnimationFrame(() => viewer.resize());
+    }
   };
 
   const unsubscribe = store.subscribe(update);
   update(store.getState());
   return async () => {
     unsubscribe();
+    householdEditor.dispose();
     await viewer.dispose();
     root.replaceChildren();
   };

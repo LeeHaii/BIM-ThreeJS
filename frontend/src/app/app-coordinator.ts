@@ -1,4 +1,12 @@
-import type { BuildingId, UnitId } from "@bim/shared";
+import type {
+  AdminOccupancy,
+  BuildingId,
+  CreateOccupancyInput,
+  UnitId,
+  UnitSummary,
+  UpdateOccupancyInput,
+  UpdateUnitInput,
+} from "@bim/shared";
 import type { ApiClient } from "../infrastructure/api/api-client.js";
 import type { AppStore } from "./app-store.js";
 
@@ -107,16 +115,127 @@ export class AppCoordinator {
         unitId,
         controller.signal,
       );
-      this.store.dispatch({ type: "OCCUPANCIES_READY", generation, items });
+      this.store.dispatch({
+        type: "OCCUPANCIES_READY",
+        generation,
+        unitId,
+        items,
+      });
     } catch (error: unknown) {
       const message = errorMessage(error);
       if (message)
         this.store.dispatch({
           type: "OCCUPANCIES_FAILED",
           generation,
+          unitId,
           message,
         });
     }
+  }
+
+  public getAdminOccupancies(
+    unitId: UnitId,
+    signal?: AbortSignal,
+  ): Promise<readonly AdminOccupancy[]> {
+    const buildingId = this.requireCurrentBuilding();
+    return this.api.getAdminOccupancies(buildingId, unitId, signal);
+  }
+
+  public async updateUnit(
+    unitId: UnitId,
+    payload: UpdateUnitInput,
+    signal?: AbortSignal,
+  ): Promise<UnitSummary> {
+    const state = this.store.getState();
+    const buildingId = this.requireCurrentBuilding();
+    const generation = state.generation;
+    const unit = await this.api.updateUnit(buildingId, unitId, payload, signal);
+    this.store.dispatch({
+      type: "HOUSEHOLD_UNIT_UPDATED",
+      generation,
+      unit,
+    });
+    return unit;
+  }
+
+  public createOccupancy(
+    unitId: UnitId,
+    payload: CreateOccupancyInput,
+    signal?: AbortSignal,
+  ): Promise<AdminOccupancy> {
+    return this.api.createOccupancy(
+      this.requireCurrentBuilding(),
+      unitId,
+      payload,
+      signal,
+    );
+  }
+
+  public updateOccupancy(
+    occupancyId: string,
+    payload: UpdateOccupancyInput,
+    signal?: AbortSignal,
+  ): Promise<AdminOccupancy> {
+    return this.api.updateOccupancy(
+      this.requireCurrentBuilding(),
+      occupancyId,
+      payload,
+      signal,
+    );
+  }
+
+  public deleteOccupancy(
+    occupancyId: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    return this.api
+      .deleteOccupancy(
+        this.requireCurrentBuilding(),
+        occupancyId,
+        signal,
+      )
+      .then(() => undefined);
+  }
+
+  public async refreshOccupancies(unitId: UnitId): Promise<void> {
+    const state = this.store.getState();
+    if (state.units.selectedId !== unitId) return;
+    this.occupanciesController?.abort();
+    const controller = new AbortController();
+    this.occupanciesController = controller;
+    const buildingId = this.requireCurrentBuilding();
+    const generation = state.generation;
+    try {
+      const items = await this.api.getOccupancies(
+        buildingId,
+        unitId,
+        controller.signal,
+      );
+      this.store.dispatch({
+        type: "OCCUPANCIES_READY",
+        generation,
+        unitId,
+        items,
+      });
+    } catch (error: unknown) {
+      const message = errorMessage(error);
+      if (message) {
+        this.store.dispatch({
+          type: "OCCUPANCIES_FAILED",
+          generation,
+          unitId,
+          message,
+        });
+      }
+    }
+  }
+
+  private requireCurrentBuilding(): BuildingId {
+    const buildingId = this.store.getState().building.selectedId;
+    if (buildingId === undefined) {
+      throw new Error("No building is currently selected");
+    }
+    return buildingId;
   }
 
   public dispose(): void {

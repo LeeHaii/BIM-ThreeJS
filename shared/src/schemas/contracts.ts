@@ -45,6 +45,12 @@ export const buildingSummarySchema = z.object({
 export const buildingDetailSchema = buildingSummarySchema.extend({
   features: z.record(z.string(), z.boolean()),
   activeModelVersionId: modelVersionIdSchema.optional(),
+  permissions: z
+    .object({
+      manageUnits: z.boolean(),
+      manageOccupancies: z.boolean(),
+    })
+    .optional(),
 });
 
 export const createBuildingInputSchema = z.object({
@@ -63,11 +69,17 @@ export const unitSummarySchema = z.object({
   unitType: nonEmptyString,
   storeyCode: nonEmptyString,
   status: z.enum(["active", "inactive"]),
-  address: nonEmptyString.optional(),
-  area: z.number().nonnegative().optional(),
-  owner: nonEmptyString.optional(),
-  certificateNumber: nonEmptyString.optional(),
-  ownershipTerm: nonEmptyString.optional(),
+  address: nonEmptyString.nullish().transform((v) => v ?? undefined),
+  area: z
+    .number()
+    .nonnegative()
+    .nullish()
+    .transform((v) => v ?? undefined),
+  owner: nonEmptyString.nullish().transform((v) => v ?? undefined),
+  certificateNumber: nonEmptyString
+    .nullish()
+    .transform((v) => v ?? undefined),
+  ownershipTerm: nonEmptyString.nullish().transform((v) => v ?? undefined),
 });
 
 export const householdUnitSummarySchema = unitSummarySchema.extend({
@@ -154,7 +166,7 @@ export type AdminOccupancy = z.infer<typeof adminOccupancySchema>;
 
 export const createOccupancyInputSchema = z.object({
   displayName: nonEmptyString,
-  email: z.string().optional(),
+  email: z.email().optional(),
   phone: z.string().optional(),
   citizenId: z.string().optional(),
   dateOfBirth: z.string().optional(),
@@ -169,7 +181,7 @@ export type CreateOccupancyInput = z.infer<typeof createOccupancyInputSchema>;
 
 export const updateOccupancyInputSchema = z.object({
   displayName: nonEmptyString.optional(),
-  email: z.string().nullable().optional(),
+  email: z.email().nullable().optional(),
   phone: z.string().nullable().optional(),
   citizenId: z.string().nullable().optional(),
   dateOfBirth: z.string().nullable().optional(),

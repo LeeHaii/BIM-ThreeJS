@@ -63,13 +63,20 @@ export type AppCommand =
       readonly unitId: UnitId;
     }
   | {
+      readonly type: "HOUSEHOLD_UNIT_UPDATED";
+      readonly generation: number;
+      readonly unit: UnitSummary;
+    }
+  | {
       readonly type: "OCCUPANCIES_READY";
       readonly generation: number;
+      readonly unitId: UnitId;
       readonly items: readonly OccupancyView[];
     }
   | {
       readonly type: "OCCUPANCIES_FAILED";
       readonly generation: number;
+      readonly unitId: UnitId;
       readonly message: string;
     }
   | {
@@ -250,14 +257,46 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
         occupancies: { status: "loading", items: [] },
         error: undefined,
       };
+    case "HOUSEHOLD_UNIT_UPDATED":
+      if (
+        !isCurrent(state, command.generation) ||
+        command.unit.buildingId !== state.building.selectedId
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        units: {
+          ...state.units,
+          items: state.units.items.map((unit) =>
+            unit.id === command.unit.id ? { ...unit, ...command.unit } : unit,
+          ),
+          storeys: state.units.storeys.map((storey) => ({
+            ...storey,
+            units: storey.units.map((unit) =>
+              unit.id === command.unit.id
+                ? { ...unit, ...command.unit }
+                : unit,
+            ),
+          })),
+        },
+      };
     case "OCCUPANCIES_READY":
-      if (!isCurrent(state, command.generation)) return state;
+      if (
+        !isCurrent(state, command.generation) ||
+        state.units.selectedId !== command.unitId
+      )
+        return state;
       return {
         ...state,
         occupancies: { status: "ready", items: command.items },
       };
     case "OCCUPANCIES_FAILED":
-      if (!isCurrent(state, command.generation)) return state;
+      if (
+        !isCurrent(state, command.generation) ||
+        state.units.selectedId !== command.unitId
+      )
+        return state;
       return {
         ...state,
         occupancies: { status: "error", items: [] },

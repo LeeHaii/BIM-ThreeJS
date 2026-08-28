@@ -7,6 +7,7 @@ from bim_api.bootstrap.create_server import create_server
 
 ROOT = Path(__file__).resolve().parents[2]
 ADMIN = "90000000-0000-4000-8000-000000000001"
+OPERATOR = "90000000-0000-4000-8000-000000000002"
 ALPHA = "11111111-1111-4111-8111-111111111111"
 TEST_HASH = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
@@ -20,6 +21,35 @@ def client() -> TestClient:
         )
     )
     return TestClient(app)
+
+
+def test_building_detail_exposes_household_management_capabilities() -> None:
+    with client() as api:
+        admin = api.get(
+            f"/api/v1/buildings/{ALPHA}",
+            headers={"X-Actor-Id": ADMIN},
+        )
+        operator = api.get(
+            f"/api/v1/buildings/{ALPHA}",
+            headers={"X-Actor-Id": OPERATOR},
+        )
+
+        assert admin.status_code == 200
+        assert admin.json()["permissions"] == {
+            "manageUnits": True,
+            "manageOccupancies": True,
+        }
+        assert operator.status_code == 200
+        assert operator.json()["permissions"] == {
+            "manageUnits": False,
+            "manageOccupancies": False,
+        }
+        forbidden = api.get(
+            f"/api/v1/admin/buildings/{ALPHA}/units/"
+            "a1111111-1111-4111-8111-111111111101/occupancies",
+            headers={"X-Actor-Id": OPERATOR},
+        )
+        assert forbidden.status_code == 403
 
 
 def test_admin_can_create_and_delete_building() -> None:
@@ -154,12 +184,17 @@ def test_admin_unit_and_occupancy_crud() -> None:
         # Update unit
         update_resp = api.put(
             f"/api/v1/admin/buildings/{ALPHA}/units/{unit_id}",
-            json={"display_name": "Luxury Penthouse 999", "area": 280.0},
+            json={
+                "display_name": "Luxury Penthouse 999",
+                "area": 280.0,
+                "owner": None,
+            },
             headers={"X-Actor-Id": ADMIN},
         )
         assert update_resp.status_code == 200
         assert update_resp.json()["displayName"] == "Luxury Penthouse 999"
         assert update_resp.json()["area"] == 280.0
+        assert update_resp.json()["owner"] is None
 
         # Create occupancy
         occ_resp = api.post(
@@ -192,11 +227,12 @@ def test_admin_unit_and_occupancy_crud() -> None:
         # Update occupancy
         up_occ = api.put(
             f"/api/v1/admin/buildings/{ALPHA}/occupancies/{occ_id}",
-            json={"phone": "+9876543210", "status": "active"},
+            json={"phone": "+9876543210", "email": None, "status": "active"},
             headers={"X-Actor-Id": ADMIN},
         )
         assert up_occ.status_code == 200
         assert up_occ.json()["phone"] == "+9876543210"
+        assert up_occ.json()["email"] is None
 
         # Delete occupancy
         del_occ = api.delete(

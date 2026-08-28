@@ -16,6 +16,7 @@ class BuildingSummary(ApiModel):
 class BuildingDetail(BuildingSummary):
     features: dict[str, bool]
     active_model_version_id: str | None = None
+    permissions: dict[str, bool] = Field(default_factory=dict)
 
 
 class CreateBuildingRequest(ApiModel):

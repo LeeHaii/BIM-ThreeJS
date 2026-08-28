@@ -60,6 +60,7 @@ export interface OperatorViewerPort {
     cutRatio?: 0.2 | 0.5,
     adjacentStorey?: HouseholdStorey,
   ): Promise<void>;
+  setStoreyCutRatio(storeyCode: string, cutRatio: 0.2 | 0.5): Promise<void>;
   clearStoreyView(): Promise<void>;
   hoverUnit(clientX: number, clientY: number): Promise<void>;
   pickUnit(clientX: number, clientY: number): Promise<UnitId | undefined>;

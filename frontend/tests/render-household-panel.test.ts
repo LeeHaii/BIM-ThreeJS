@@ -117,4 +117,55 @@ describe("renderHouseholdPanel", () => {
     cutButtons[0]?.click();
     expect(setCutRatio).toHaveBeenCalledWith(0.2);
   });
+
+  it("shows household management only when the building capability allows it", () => {
+    const container = document.createElement("div");
+    const openEditor = vi.fn();
+    renderHouseholdPanel(
+      container,
+      {
+        ...initialState,
+        mode: "units",
+        units: {
+          ...initialState.units,
+          status: "ready",
+          items: storey.units,
+          storeys: [storey],
+          selectedStoreyCode: storey.code,
+          selectedId: storey.units[0]?.id,
+        },
+      },
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      { canManage: true, openEditor },
+    );
+
+    const manage = container.querySelector<HTMLButtonElement>(
+      ".unit-manage-button",
+    );
+    manage?.click();
+    expect(openEditor).toHaveBeenCalledWith(storey.units[0], manage);
+
+    renderHouseholdPanel(
+      container,
+      {
+        ...initialState,
+        mode: "units",
+        units: {
+          ...initialState.units,
+          status: "ready",
+          items: storey.units,
+          storeys: [storey],
+          selectedStoreyCode: storey.code,
+          selectedId: storey.units[0]?.id,
+        },
+      },
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+      { canManage: false, openEditor },
+    );
+    expect(container.querySelector(".unit-manage-button")).toBeNull();
+  });
 });

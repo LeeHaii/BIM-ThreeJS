@@ -12,8 +12,17 @@ const UNIT_ICONS = {
   chevronRight: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px;"><polyline points="9 18 15 12 9 6"/></svg>`,
   layers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/><polyline points="2 17 12 22 22 17"/></svg>`,
   apartment: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V4h14v17"/><path d="M9 8h2"/><path d="M13 8h2"/><path d="M9 12h2"/><path d="M13 12h2"/><path d="M10 21v-5h4v5"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>`,
   model: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></svg>`,
 };
+
+export interface HouseholdPanelManagement {
+  readonly canManage: boolean;
+  readonly openEditor: (
+    unit: HouseholdUnitSummary,
+    trigger: HTMLButtonElement,
+  ) => void;
+}
 
 interface Column<T> {
   readonly label: string;
@@ -96,6 +105,7 @@ export function renderHouseholdPanel(
   selectStorey: (storey: HouseholdStorey) => void,
   selectUnit: (unitId: UnitId) => void,
   setCutRatio: (ratio: 0.2 | 0.5) => void,
+  management?: HouseholdPanelManagement,
 ): void {
   container.replaceChildren();
   const heading = document.createElement("div");
@@ -253,7 +263,9 @@ export function renderHouseholdPanel(
   );
   if (selected === undefined) return;
 
-  container.append(renderUnitDetails(selected, state.occupancies.items.length));
+  container.append(
+    renderUnitDetails(selected, state.occupancies.items.length, management),
+  );
 
   const residentHeading = document.createElement("div");
   residentHeading.className = "resident-heading";
@@ -289,6 +301,7 @@ export function renderHouseholdPanel(
 function renderUnitDetails(
   unit: HouseholdUnitSummary,
   residentCount: number,
+  management?: HouseholdPanelManagement,
 ): HTMLElement {
   const section = document.createElement("section");
   section.className = "unit-detail-card";
@@ -303,7 +316,24 @@ function renderUnitDetails(
   const status = document.createElement("span");
   status.className = "unit-status-badge";
   status.textContent = unit.status;
-  header.append(title, status);
+  const actions = document.createElement("div");
+  actions.className = "unit-detail-actions";
+  actions.append(status);
+  if (management?.canManage === true) {
+    const manageButton = document.createElement("button");
+    manageButton.type = "button";
+    manageButton.className = "unit-manage-button";
+    manageButton.innerHTML = `${UNIT_ICONS.edit}<span>Manage</span>`;
+    manageButton.setAttribute(
+      "aria-label",
+      `Manage apartment ${unit.displayName}`,
+    );
+    manageButton.addEventListener("click", () =>
+      management.openEditor(unit, manageButton),
+    );
+    actions.append(manageButton);
+  }
+  header.append(title, actions);
 
   const metrics = document.createElement("dl");
   metrics.className = "unit-metrics";

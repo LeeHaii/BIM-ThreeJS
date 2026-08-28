@@ -20,9 +20,24 @@ database, and returned as a small floor index.
    grouped by floor with their model-local IDs. Selecting a floor therefore
    resolves only its apartments (normally a handful of IDs), not every model
    element.
-5. The viewer applies a horizontal clipping plane at either 20% or 50% of the
-   measured floor height, reconstructs translucent apartment slab overlays from
-   those IDs, and raycasts the overlays for apartment selection.
+5. The viewer applies one persistent horizontal clipping plane at either 20% or
+   50% of the measured floor height. The plane is registered globally with the
+   Three.js renderer for exact GPU triangle clipping and is also passed to the
+   Fragments worker for coarse tile culling. Translucent apartment overlays are
+   built asynchronously, cached for up to three floors, and raycast for
+   apartment selection.
+
+Floor changes use a prepare-then-commit transition. The existing plane remains
+active while bounds for a new floor are prepared, so the complete building is
+never rendered between two floor selections. A transition token prevents an
+older asynchronous selection from replacing a newer one. Changing between the
+20% and 50% cut heights only updates the persistent plane; it does not rebuild
+overlays, highlights, bounds, or the camera.
+
+The clipping plane is a render-time section and does not mutate source meshes.
+Cut faces are intentionally left open. CPU boolean mesh slicing is avoided
+because it duplicates geometry and does not fit the streamed Fragments LOD
+model.
 
 Binding sets are immutable snapshots for a model version. A new import retires
 the previous active set, so stale IDs are not mixed with a replacement model.
@@ -75,6 +90,7 @@ conversion and sidecar import together.
 
 The expensive IFC property traversal is an offline conversion/import step. At
 runtime the API performs indexed database lookups, and a selected floor loads
-geometry only for the IDs in that floor. The manual development seed extractor
-remains available for diagnostics but is not part of the production viewer
-path.
+geometry only for the IDs in that floor. Floor bounds are queried once per
+viewer session, and overlay geometry uses a three-floor LRU cache. The manual
+development seed extractor remains available for diagnostics but is not part
+of the production viewer path.
