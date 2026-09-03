@@ -183,6 +183,14 @@ export class ViewerSessionController {
     return this.adapter?.setCamera(pose) ?? Promise.resolve();
   }
 
+  public getCurrentCameraPose(): CameraPose | undefined {
+    return this.adapter?.getCurrentCameraPose();
+  }
+
+  public setDefaultCamera(pose: CameraPose): void {
+    this.adapter?.setDefaultCamera(pose);
+  }
+
   public async setLayerVisibility(
     layerId: string,
     visible: boolean,

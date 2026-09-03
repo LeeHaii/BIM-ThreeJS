@@ -69,6 +69,8 @@ export interface OperatorViewerPort {
   setLayerVisibility(layerId: string, visible: boolean): Promise<void>;
   setCamera(pose: CameraPose, animate?: boolean): Promise<void>;
   resetCamera(): Promise<void>;
+  getCurrentCameraPose(): CameraPose;
+  setDefaultCamera(pose: CameraPose): void;
   setTouchNavigation(mode: "orbit" | "vertical"): void;
   resize(): void;
   dispose(): Promise<void>;

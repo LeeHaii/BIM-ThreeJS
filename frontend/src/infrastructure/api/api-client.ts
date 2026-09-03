@@ -13,6 +13,7 @@ import type {
   BuildingDetail,
   BuildingId,
   BuildingSummary,
+  CameraPose,
   CreateBuildingInput,
   CreateOccupancyInput,
   CreateUnitInput,
@@ -214,6 +215,23 @@ export class ApiClient {
       {
         method: "POST",
         body: formData,
+      },
+    );
+  }
+
+  public updateDefaultCamera(
+    buildingId: BuildingId,
+    pose: CameraPose,
+    signal?: AbortSignal,
+  ): Promise<SceneManifestV2> {
+    return this.request(
+      `/admin/buildings/${buildingId}/scenes/active/default-camera`,
+      sceneManifestV2Schema,
+      signal,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pose),
       },
     );
   }

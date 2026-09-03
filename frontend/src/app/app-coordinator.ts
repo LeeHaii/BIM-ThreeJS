@@ -1,6 +1,7 @@
 import type {
   AdminOccupancy,
   BuildingId,
+  CameraPose,
   CreateOccupancyInput,
   UnitId,
   UnitSummary,
@@ -98,6 +99,15 @@ export class AppCoordinator {
         });
       }
     }
+  }
+
+  public updateDefaultCamera(
+    pose: CameraPose,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    return this.api
+      .updateDefaultCamera(this.requireCurrentBuilding(), pose, signal)
+      .then(() => undefined);
   }
 
   public async selectUnit(unitId: UnitId): Promise<void> {

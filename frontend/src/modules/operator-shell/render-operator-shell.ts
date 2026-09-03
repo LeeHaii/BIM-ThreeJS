@@ -149,47 +149,62 @@ export function renderOperatorShell(
         ${
           ENABLE_DEBUG_TOOLS
             ? `
-        <button class="debug-seed-btn" type="button" title="Open seed debug tools" aria-label="Open seed debug tools" aria-controls="debug-seed-panel" aria-expanded="false">
+        <button class="debug-seed-btn" type="button" title="Open developer tools" aria-label="Open developer tools" aria-controls="debug-seed-panel" aria-expanded="false">
           <span class="action-icon" aria-hidden="true">${ICONS.terminal}</span>
         </button>
         <div id="debug-seed-panel" class="debug-seed-panel ui-surface" role="dialog" aria-labelledby="debug-seed-title" hidden>
           <div class="debug-seed-header">
             <div class="debug-seed-title-row">
               <span class="debug-seed-icon">${ICONS.terminal}</span>
-              <h3 id="debug-seed-title" class="debug-seed-title">IFC Apartment Seed Extractor</h3>
+              <h3 id="debug-seed-title" class="debug-seed-title">Developer Tools</h3>
               <span class="debug-badge">DEBUG</span>
             </div>
             <button class="debug-close-btn" type="button" aria-label="Close debug panel">&times;</button>
           </div>
           <div class="debug-seed-body">
-            <p class="debug-seed-desc">
-              Scans all IFC elements in current models containing <code>Apartment</code> metadata, extracts <code>Area</code> &amp; <code>LivingFloor</code>, groups by floor, and outputs downloadable JSON seeds.
-            </p>
-            <div class="debug-seed-actions">
-              <button class="admin-btn admin-btn-primary debug-run-btn" type="button">
-                <span>⚡ Scan &amp; Export Seeds (.json)</span>
+            <section class="debug-tool-section" aria-labelledby="debug-camera-title">
+              <h4 id="debug-camera-title" class="debug-tool-title">Default camera view</h4>
+              <p class="debug-seed-desc">
+                Save the current camera position, orbit target, and field of view as this scene's default. The saved view is restored after reloads.
+              </p>
+              <button class="admin-btn admin-btn-secondary debug-tool-action debug-camera-btn" type="button">
+                <span class="debug-action-icon" aria-hidden="true">${ICONS.camera}</span>
+                <span>Save current view as default</span>
               </button>
-            </div>
-            <div class="debug-status-row" hidden>
-              <div class="debug-spinner" hidden></div>
-              <span class="debug-status-text">Ready</span>
-            </div>
-            <div class="debug-result-container" hidden>
-              <div class="debug-result-header">
-                <span class="debug-result-count">0 items found</span>
-                <div class="debug-result-buttons">
-                  <button type="button" class="admin-btn admin-btn-secondary small debug-copy-btn">
-                    ${ICONS.copy}
-                    <span>Copy JSON</span>
-                  </button>
-                  <button type="button" class="admin-btn admin-btn-secondary small debug-save-btn">
-                    ${ICONS.download}
-                    <span>Save .json</span>
-                  </button>
-                </div>
+              <output class="debug-status-row debug-camera-status" aria-live="polite" hidden></output>
+            </section>
+            <section class="debug-tool-section" aria-labelledby="debug-seeds-title">
+              <h4 id="debug-seeds-title" class="debug-tool-title">IFC apartment seeds</h4>
+              <p class="debug-seed-desc">
+                Scans all IFC elements in current models containing <code>Apartment</code> metadata, extracts <code>Area</code> &amp; <code>LivingFloor</code>, groups by floor, and outputs downloadable JSON seeds.
+              </p>
+              <div class="debug-seed-actions">
+                <button class="admin-btn admin-btn-primary debug-tool-action debug-run-btn" type="button">
+                  <span class="debug-action-icon" aria-hidden="true">${ICONS.terminal}</span>
+                  <span>Scan &amp; Export Seeds (.json)</span>
+                </button>
               </div>
-              <pre class="debug-json-preview font-mono"></pre>
-            </div>
+              <div class="debug-status-row debug-seed-status" hidden>
+                <div class="debug-spinner" hidden></div>
+                <span class="debug-status-text">Ready</span>
+              </div>
+              <div class="debug-result-container" hidden>
+                <div class="debug-result-header">
+                  <span class="debug-result-count">0 items found</span>
+                  <div class="debug-result-buttons">
+                    <button type="button" class="admin-btn admin-btn-secondary small debug-copy-btn">
+                      ${ICONS.copy}
+                      <span>Copy JSON</span>
+                    </button>
+                    <button type="button" class="admin-btn admin-btn-secondary small debug-save-btn">
+                      ${ICONS.download}
+                      <span>Save .json</span>
+                    </button>
+                  </div>
+                </div>
+                <pre class="debug-json-preview font-mono"></pre>
+              </div>
+            </section>
           </div>
         </div>`
             : ""
@@ -393,7 +408,13 @@ export function renderOperatorShell(
     const debugCloseBtn =
       root.querySelector<HTMLButtonElement>(".debug-close-btn");
     const debugRunBtn = root.querySelector<HTMLButtonElement>(".debug-run-btn");
-    const debugStatusRow = root.querySelector<HTMLElement>(".debug-status-row");
+    const debugCameraBtn =
+      root.querySelector<HTMLButtonElement>(".debug-camera-btn");
+    const debugCameraStatus = root.querySelector<HTMLOutputElement>(
+      ".debug-camera-status",
+    );
+    const debugStatusRow =
+      root.querySelector<HTMLElement>(".debug-seed-status");
     const debugStatusText =
       root.querySelector<HTMLElement>(".debug-status-text");
     const debugSpinner = root.querySelector<HTMLElement>(".debug-spinner");
@@ -435,6 +456,33 @@ export function renderOperatorShell(
         debugBtn?.focus();
       }
     });
+
+    debugCameraBtn?.addEventListener("click", () => void (async () => {
+      if (debugCameraBtn.disabled) return;
+      const pose = viewer.getCurrentCameraPose();
+      if (debugCameraStatus === null) return;
+      debugCameraStatus.hidden = false;
+      if (pose === undefined) {
+        debugCameraStatus.textContent =
+          "The viewer is not ready yet. Wait for the model to finish loading.";
+        return;
+      }
+      debugCameraBtn.disabled = true;
+      debugCameraStatus.textContent = "Saving default view...";
+      try {
+        await coordinator.updateDefaultCamera(pose);
+        viewer.setDefaultCamera(pose);
+        const position = pose.position.map((value) => value.toFixed(2)).join(", ");
+        const target = pose.target.map((value) => value.toFixed(2)).join(", ");
+        const fov = pose.fov === undefined ? "n/a" : `${pose.fov.toFixed(1)}°`;
+        debugCameraStatus.textContent = `Default saved · Position ${position} · Target ${target} · FOV ${fov}`;
+        console.info("Default camera persisted for the current scene:", pose);
+      } catch (error: unknown) {
+        debugCameraStatus.textContent = `Save failed: ${error instanceof Error ? error.message : String(error)}`;
+      } finally {
+        debugCameraBtn.disabled = false;
+      }
+    })());
 
     debugRunBtn?.addEventListener("click", () => void (async () => {
       if (debugRunBtn.disabled) return;

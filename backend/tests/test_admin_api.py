@@ -112,6 +112,41 @@ def test_admin_can_setup_models() -> None:
         assert manifest["layers"][1]["type"] == "gltf"
 
 
+def test_admin_can_persist_the_active_scene_default_camera() -> None:
+    pose = {
+        "position": [12.5, 8.25, -4.75],
+        "target": [1.0, 2.0, 3.0],
+        "fov": 57.0,
+    }
+    with client() as api:
+        response = api.put(
+            f"/api/v1/admin/buildings/{ALPHA}/scenes/active/default-camera",
+            json=pose,
+            headers={"X-Actor-Id": ADMIN},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["settings"]["defaultCamera"] == pose
+
+        scene = api.get(
+            f"/api/v1/buildings/{ALPHA}/scenes/active/manifest",
+            headers={"X-Actor-Id": ADMIN},
+        )
+        model = api.get(
+            f"/api/v1/buildings/{ALPHA}/models/active/manifest",
+            headers={"X-Actor-Id": ADMIN},
+        )
+        assert scene.json()["settings"]["defaultCamera"] == pose
+        assert model.json()["defaultCamera"] == pose
+
+        forbidden = api.put(
+            f"/api/v1/admin/buildings/{ALPHA}/scenes/active/default-camera",
+            json=pose,
+            headers={"X-Actor-Id": OPERATOR},
+        )
+        assert forbidden.status_code == 403
+
+
 def test_model_setup_imports_precomputed_unit_bindings() -> None:
     with client() as api:
         response = api.post(

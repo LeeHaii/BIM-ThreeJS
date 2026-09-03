@@ -148,3 +148,44 @@ describe("ThatOpenViewerAdapter floor sections", () => {
     expect(fragments.resetHighlight).not.toHaveBeenCalled();
   });
 });
+
+describe("ThatOpenViewerAdapter default camera", () => {
+  it("captures the live camera pose and uses it for reset", async () => {
+    const adapter = new ThatOpenViewerAdapter();
+    const getPosition = vi.fn((out: THREE.Vector3) => out.set(12, 8, -4));
+    const getTarget = vi.fn((out: THREE.Vector3) => out.set(1, 2, 3));
+    const setLookAt = vi.fn().mockResolvedValue(undefined);
+    const camera = new THREE.PerspectiveCamera(57, 1, 0.1, 1_000);
+    const internals = adapter as unknown as {
+      world: {
+        camera: {
+          three: THREE.PerspectiveCamera;
+          controls: {
+            getPosition: typeof getPosition;
+            getTarget: typeof getTarget;
+            setLookAt: typeof setLookAt;
+          };
+        };
+      };
+    };
+    internals.world = {
+      camera: {
+        three: camera,
+        controls: { getPosition, getTarget, setLookAt },
+      },
+    };
+
+    const captured = adapter.getCurrentCameraPose();
+    adapter.setDefaultCamera(captured);
+
+    expect(captured).toEqual({
+      position: [12, 8, -4],
+      target: [1, 2, 3],
+      fov: 57,
+    });
+
+    await adapter.resetCamera();
+
+    expect(setLookAt).toHaveBeenCalledWith(12, 8, -4, 1, 2, 3, true);
+  });
+});

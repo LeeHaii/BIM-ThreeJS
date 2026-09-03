@@ -26,6 +26,7 @@ from .schemas import (
     AdminOccupancyView,
     BuildingDetail,
     BuildingSummary,
+    CameraPoseInput,
     CreateBuildingRequest,
     CreateOccupancyRequest,
     CreateUnitRequest,
@@ -253,6 +254,53 @@ class ModelService:
         if version is None:
             raise ApiError(404, "active_scene_not_found", "No active scene is available")
         return version.manifest
+
+    def update_default_camera(
+        self,
+        session: Session,
+        actor: Actor,
+        building_id: str,
+        payload: CameraPoseInput,
+    ) -> dict[str, object]:
+        role = self.authorization.require_building_access(session, actor, building_id)
+        if role != "facility_admin":
+            raise ApiError(
+                403,
+                "forbidden",
+                "Only facility administrators can update the default camera",
+            )
+
+        scene_version = session.scalar(
+            select(SceneVersionRecord).where(
+                SceneVersionRecord.building_id == building_id,
+                SceneVersionRecord.status == "active",
+            )
+        )
+        if scene_version is None:
+            raise ApiError(404, "active_scene_not_found", "No active scene is available")
+
+        camera = payload.model_dump(by_alias=True, exclude_none=True, mode="json")
+        scene_manifest = dict(scene_version.manifest)
+        scene_settings = dict(scene_manifest.get("settings", {}))
+        scene_settings["defaultCamera"] = camera
+        scene_manifest["settings"] = scene_settings
+        scene_version.manifest = scene_manifest
+
+        model_version = session.scalar(
+            select(ModelVersionRecord)
+            .join(ModelRecord, ModelRecord.id == ModelVersionRecord.model_id)
+            .where(
+                ModelRecord.building_id == building_id,
+                ModelVersionRecord.status == "active",
+            )
+        )
+        if model_version is not None:
+            model_manifest = dict(model_version.manifest)
+            model_manifest["defaultCamera"] = camera
+            model_version.manifest = model_manifest
+
+        session.commit()
+        return scene_manifest
 
     def setup_models(
         self, session: Session, actor: Actor, building_id: str, payload: SetupModelsRequest

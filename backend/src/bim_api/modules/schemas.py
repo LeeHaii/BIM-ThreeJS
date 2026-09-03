@@ -1,6 +1,6 @@
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import Field, FiniteFloat
 
 from .common import ApiModel
 
@@ -185,6 +185,13 @@ class SetupModelsRequest(ApiModel):
     env_byte_size: int
     env_content_hash: str
     unit_binding_index: UnitBindingIndexInput | None = None
+
+
+class CameraPoseInput(ApiModel):
+    position: tuple[FiniteFloat, FiniteFloat, FiniteFloat]
+    target: tuple[FiniteFloat, FiniteFloat, FiniteFloat]
+    up: tuple[FiniteFloat, FiniteFloat, FiniteFloat] | None = None
+    fov: Annotated[FiniteFloat, Field(gt=0, le=180)] | None = None
 
 
 class ActionResponse(ApiModel):

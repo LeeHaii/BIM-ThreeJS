@@ -986,6 +986,23 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
       await this.setCamera(this.defaultCamera);
   }
 
+  public getCurrentCameraPose(): CameraPose {
+    const world = this.requireWorld();
+    const position = world.camera.controls.getPosition(new THREE.Vector3());
+    const target = world.camera.controls.getTarget(new THREE.Vector3());
+    const camera = world.camera.three;
+    const pose: CameraPose = {
+      position: [position.x, position.y, position.z],
+      target: [target.x, target.y, target.z],
+      ...(camera instanceof THREE.PerspectiveCamera ? { fov: camera.fov } : {}),
+    };
+    return pose;
+  }
+
+  public setDefaultCamera(pose: CameraPose): void {
+    this.defaultCamera = pose;
+  }
+
   public setTouchNavigation(mode: "orbit" | "vertical"): void {
     if (this.world === undefined) return;
     this.world.camera.controls.touches.one =

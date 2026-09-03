@@ -15,6 +15,7 @@ from .schemas import (
     ActionResponse,
     AdminOccupancyView,
     BuildingDetail,
+    CameraPoseInput,
     CreateBuildingRequest,
     CreateOccupancyRequest,
     CreateUnitRequest,
@@ -173,6 +174,22 @@ def setup_models(
     actor: ActorDependency,
 ) -> dict[str, object]:
     return request.app.state.models.setup_models(session, actor, building_id, payload)
+
+
+@router.put("/admin/buildings/{building_id}/scenes/active/default-camera")
+def update_default_camera(
+    building_id: str,
+    payload: CameraPoseInput,
+    request: Request,
+    session: SessionDependency,
+    actor: ActorDependency,
+) -> dict[str, object]:
+    return request.app.state.models.update_default_camera(
+        session,
+        actor,
+        building_id,
+        payload,
+    )
 
 
 @router.post(

@@ -3527,6 +3527,24 @@ dd {
   min-height: 0;
 }
 
+.debug-tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.debug-tool-section + .debug-tool-section {
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.debug-tool-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .debug-seed-desc {
   font-size: 12px;
   line-height: 1.5;
@@ -3549,8 +3567,9 @@ dd {
   gap: 8px;
 }
 
-.debug-run-btn {
+.debug-tool-action {
   width: 100%;
+  min-height: 44px;
   padding: 8px 14px;
   font-size: 12px;
   font-weight: 600;
@@ -3558,6 +3577,31 @@ dd {
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+.debug-tool-action:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.debug-tool-action:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.debug-action-icon {
+  display: grid;
+  place-items: center;
+}
+
+.debug-action-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.debug-camera-status {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .debug-status-row {
