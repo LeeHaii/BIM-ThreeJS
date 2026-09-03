@@ -1,11 +1,16 @@
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from bim_api.infrastructure.models import (
+    BimElementMetadataRecord,
+    BimIndexRecord,
     BuildingRecord,
     ModelRecord,
     ModelVersionRecord,
@@ -24,6 +29,11 @@ from .authorization import Actor, AuthorizationService
 from .common import ApiError
 from .schemas import (
     AdminOccupancyView,
+    BimCatalogElementView,
+    BimCatalogView,
+    BimElementMetadataView,
+    BimElementRefView,
+    BimIndexStatusView,
     BuildingDetail,
     BuildingSummary,
     CameraPoseInput,
@@ -203,6 +213,12 @@ class BuildingService:
         session.query(UnitBindingSetRecord).filter(
             UnitBindingSetRecord.id.in_(binding_set_ids)
         ).delete(synchronize_session=False)
+        session.query(BimElementMetadataRecord).filter(
+            BimElementMetadataRecord.model_version_id.in_(model_version_ids)
+        ).delete(synchronize_session=False)
+        session.query(BimIndexRecord).filter(
+            BimIndexRecord.model_version_id.in_(model_version_ids)
+        ).delete(synchronize_session=False)
         session.query(UnitRecord).filter(UnitRecord.building_id == building_id).delete()
         session.query(SceneVersionRecord).filter(
             SceneVersionRecord.building_id == building_id
@@ -254,6 +270,282 @@ class ModelService:
         if version is None:
             raise ApiError(404, "active_scene_not_found", "No active scene is available")
         return version.manifest
+
+    def get_bim_index_status(
+        self, session: Session, actor: Actor, building_id: str
+    ) -> BimIndexStatusView:
+        self.authorization.require_building_access(session, actor, building_id)
+        version = self._active_model_version(session, building_id)
+        if version is None:
+            return BimIndexStatusView(status="missing", element_count=0)
+        index = session.get(BimIndexRecord, version.id)
+        if index is None:
+            return BimIndexStatusView(status="missing", element_count=0)
+        return BimIndexStatusView(
+            status=index.status,
+            schema_version=index.schema_version,
+            extractor_version=index.extractor_version,
+            source_hash=index.source_hash,
+            element_count=index.element_count,
+            generated_at=(iso_utc(index.generated_at) if index.generated_at is not None else None),
+            error=index.error,
+        )
+
+    def get_bim_catalog(
+        self,
+        session: Session,
+        actor: Actor,
+        building_id: str,
+        model_version_id: str,
+    ) -> BimCatalogView:
+        self._require_model_version(session, actor, building_id, model_version_id)
+        index = session.get(BimIndexRecord, model_version_id)
+        if index is None or index.status != "ready":
+            raise ApiError(404, "bim_index_not_ready", "BIM metadata index is not ready")
+        rows = session.execute(
+            select(
+                BimElementMetadataRecord.layer_id,
+                BimElementMetadataRecord.model_local_id,
+                BimElementMetadataRecord.global_id,
+                BimElementMetadataRecord.category,
+                BimElementMetadataRecord.title,
+                BimElementMetadataRecord.box,
+            )
+            .where(BimElementMetadataRecord.model_version_id == model_version_id)
+            .order_by(
+                BimElementMetadataRecord.category,
+                BimElementMetadataRecord.title,
+                BimElementMetadataRecord.model_local_id,
+            )
+        ).all()
+        return BimCatalogView(
+            schema_version=index.schema_version,
+            model_version_id=model_version_id,
+            source_hash=index.source_hash,
+            elements=[
+                BimCatalogElementView(
+                    layer_id=row.layer_id,
+                    ref=BimElementRefView(
+                        model_version_id=model_version_id,
+                        model_local_id=row.model_local_id,
+                        global_id=row.global_id,
+                    ),
+                    title=row.title,
+                    category=row.category,
+                    box=row.box,
+                )
+                for row in rows
+            ],
+        )
+
+    def get_bim_element(
+        self,
+        session: Session,
+        actor: Actor,
+        building_id: str,
+        model_version_id: str,
+        model_local_id: int,
+    ) -> BimElementMetadataView:
+        self._require_model_version(session, actor, building_id, model_version_id)
+        index = session.get(BimIndexRecord, model_version_id)
+        if index is None or index.status != "ready":
+            raise ApiError(404, "bim_index_not_ready", "BIM metadata index is not ready")
+        row = session.get(
+            BimElementMetadataRecord,
+            {"model_version_id": model_version_id, "model_local_id": model_local_id},
+        )
+        if row is None:
+            raise ApiError(404, "bim_element_not_found", "BIM element was not found")
+        element = BimCatalogElementView(
+            layer_id=row.layer_id,
+            ref=BimElementRefView(
+                model_version_id=model_version_id,
+                model_local_id=row.model_local_id,
+                global_id=row.global_id,
+            ),
+            title=row.title,
+            category=row.category,
+            box=row.box,
+        )
+        return BimElementMetadataView(element=element, raw_data=row.raw_data)
+
+    def import_bim_index_file(
+        self,
+        session: Session,
+        actor: Actor,
+        building_id: str,
+        source_path: Path,
+        source_hash: str,
+        extractor_version: str,
+        layer_id: str = "layer-ifc-fragments",
+    ) -> BimIndexStatusView:
+        role = self.authorization.require_building_access(session, actor, building_id)
+        if role != "facility_admin":
+            raise ApiError(403, "forbidden", "Only facility administrators can build BIM indexes")
+        version = self._active_model_version(session, building_id)
+        if version is None:
+            raise ApiError(404, "active_model_not_found", "No active model is available")
+        if version.source_hash != source_hash:
+            raise ApiError(
+                409, "bim_index_source_mismatch", "BIM index does not match the active model"
+            )
+
+        session.execute(
+            delete(BimElementMetadataRecord).where(
+                BimElementMetadataRecord.model_version_id == version.id
+            )
+        )
+        session.execute(delete(BimIndexRecord).where(BimIndexRecord.model_version_id == version.id))
+        index = BimIndexRecord(
+            model_version_id=version.id,
+            schema_version="1.0",
+            extractor_version=extractor_version,
+            source_hash=source_hash,
+            status="building",
+            element_count=0,
+        )
+        session.add(index)
+        session.commit()
+
+        count = 0
+        batch: list[dict[str, Any]] = []
+        insert_stmt = sqlite_insert(BimElementMetadataRecord).on_conflict_do_nothing(
+            index_elements=["model_version_id", "model_local_id"]
+        )
+        try:
+            with source_path.open("r", encoding="utf-8") as stream:
+                for line_number, line in enumerate(stream, start=1):
+                    if not line.strip():
+                        continue
+                    payload = json.loads(line)
+                    raw_data = payload.get("rawData")
+                    model_local_id = payload.get("modelLocalId")
+                    if not isinstance(raw_data, dict) or not isinstance(model_local_id, int):
+                        raise ValueError(f"Invalid BIM index row at line {line_number}")
+                    batch.append(
+                        {
+                            "model_version_id": version.id,
+                            "model_local_id": model_local_id,
+                            "layer_id": layer_id,
+                            "global_id": payload.get("globalId"),
+                            "category": str(payload.get("category") or "Uncategorized")[:100],
+                            "title": str(payload.get("title") or f"Element {model_local_id}")[:500],
+                            "box": payload.get("box"),
+                            "raw_data": raw_data,
+                        }
+                    )
+                    if len(batch) >= 5000:
+                        session.execute(insert_stmt, batch)
+                        count += len(batch)
+                        batch.clear()
+                        index.element_count = count
+                        session.commit()
+                if batch:
+                    session.execute(insert_stmt, batch)
+                    count += len(batch)
+                    batch.clear()
+
+            index = session.get(BimIndexRecord, version.id)
+            if index is None:
+                raise ValueError("BIM index state was removed during import")
+            actual_count = (
+                session.scalar(
+                    select(func.count())
+                    .select_from(BimElementMetadataRecord)
+                    .where(BimElementMetadataRecord.model_version_id == version.id)
+                )
+                or count
+            )
+            index.status = "ready"
+            index.element_count = actual_count
+            index.generated_at = datetime.now(UTC)
+            index.error = None
+            descriptor = self._bim_index_descriptor(building_id, version, index)
+            model_manifest = dict(version.manifest)
+            model_manifest["bimIndex"] = descriptor
+            version.manifest = model_manifest
+            scene = session.scalar(
+                select(SceneVersionRecord).where(
+                    SceneVersionRecord.building_id == building_id,
+                    SceneVersionRecord.status == "active",
+                )
+            )
+            if scene is not None:
+                scene_manifest = dict(scene.manifest)
+                scene_manifest["bimIndex"] = descriptor
+                scene.manifest = scene_manifest
+            session.commit()
+            return self.get_bim_index_status(session, actor, building_id)
+        except Exception as exc:
+            session.rollback()
+            session.execute(
+                delete(BimElementMetadataRecord).where(
+                    BimElementMetadataRecord.model_version_id == version.id
+                )
+            )
+            failed = session.get(BimIndexRecord, version.id)
+            if failed is None:
+                failed = BimIndexRecord(
+                    model_version_id=version.id,
+                    schema_version="1.0",
+                    extractor_version=extractor_version,
+                    source_hash=source_hash,
+                    status="failed",
+                    element_count=0,
+                )
+                session.add(failed)
+            failed.status = "failed"
+            failed.element_count = 0
+            failed.error = str(exc)[:500]
+            session.commit()
+            raise ApiError(
+                422, "bim_index_import_failed", "Failed to import BIM metadata index"
+            ) from exc
+
+    @staticmethod
+    def _active_model_version(session: Session, building_id: str) -> ModelVersionRecord | None:
+        return session.scalar(
+            select(ModelVersionRecord)
+            .join(ModelRecord, ModelRecord.id == ModelVersionRecord.model_id)
+            .where(
+                ModelRecord.building_id == building_id,
+                ModelVersionRecord.status == "active",
+            )
+        )
+
+    def _require_model_version(
+        self,
+        session: Session,
+        actor: Actor,
+        building_id: str,
+        model_version_id: str,
+    ) -> ModelVersionRecord:
+        self.authorization.require_building_access(session, actor, building_id)
+        version = session.scalar(
+            select(ModelVersionRecord)
+            .join(ModelRecord, ModelRecord.id == ModelVersionRecord.model_id)
+            .where(
+                ModelRecord.building_id == building_id,
+                ModelVersionRecord.id == model_version_id,
+            )
+        )
+        if version is None:
+            raise ApiError(404, "model_version_not_found", "Model version was not found")
+        return version
+
+    @staticmethod
+    def _bim_index_descriptor(
+        building_id: str, version: ModelVersionRecord, index: BimIndexRecord
+    ) -> dict[str, Any]:
+        base = f"/buildings/{building_id}/models/{version.id}/bim-index"
+        return {
+            "schemaVersion": "1.0",
+            "modelVersionId": version.id,
+            "sourceHash": index.source_hash,
+            "elementCount": index.element_count,
+            "catalogUrl": f"{base}/catalog",
+            "elementUrlTemplate": f"{base}/elements/{{localId}}",
+        }
 
     def update_default_camera(
         self,
@@ -334,9 +626,7 @@ class ModelService:
         for mv in existing_model_versions:
             mv.status = "retired"
             binding_sets = session.scalars(
-                select(UnitBindingSetRecord).where(
-                    UnitBindingSetRecord.model_version_id == mv.id
-                )
+                select(UnitBindingSetRecord).where(UnitBindingSetRecord.model_version_id == mv.id)
             ).all()
             for binding_set in binding_sets:
                 binding_set.status = "retired"
@@ -814,9 +1104,7 @@ class UnitService:
                     layer_id=layer_id,
                     model_local_ids=[binding.model_local_id for binding in bindings],
                     global_ids=[
-                        binding.global_id
-                        for binding in bindings
-                        if binding.global_id is not None
+                        binding.global_id for binding in bindings if binding.global_id is not None
                     ],
                 )
             )
@@ -837,9 +1125,7 @@ class UnitService:
                     code=code,
                     label=f"Floor {code.removeprefix('L')}",
                     unit_count=len(storey_units),
-                    bound_unit_count=sum(
-                        1 for unit in storey_units if unit.model_local_ids
-                    ),
+                    bound_unit_count=sum(1 for unit in storey_units if unit.model_local_ids),
                     units=storey_units,
                 )
             )

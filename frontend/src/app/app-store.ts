@@ -9,6 +9,7 @@ import type {
   UnitSummary,
 } from "@bim/shared";
 import type {
+  BimElementSummary,
   ViewerLayerState,
   ViewerPick,
 } from "../modules/viewer-runtime/index.js";
@@ -106,6 +107,26 @@ export type AppCommand =
       readonly generation: number;
     }
   | {
+      readonly type: "BIM_CATALOG_LOADING";
+      readonly generation: number;
+    }
+  | {
+      readonly type: "BIM_CATALOG_PROGRESS";
+      readonly generation: number;
+      readonly processed: number;
+      readonly total: number;
+    }
+  | {
+      readonly type: "BIM_CATALOG_READY";
+      readonly generation: number;
+      readonly items: readonly BimElementSummary[];
+    }
+  | {
+      readonly type: "BIM_CATALOG_FAILED";
+      readonly generation: number;
+      readonly message: string;
+    }
+  | {
       readonly type: "SELECT_BIM_ELEMENT";
       readonly generation: number;
       readonly selection: ViewerPick;
@@ -161,6 +182,13 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
           touchNavigation: "orbit",
         },
         bimSelection: undefined,
+        bimCatalog: {
+          status: "idle",
+          items: [],
+          processed: 0,
+          total: 0,
+          error: undefined,
+        },
         bimInspection: { status: "idle" },
         units: {
           query: "",
@@ -274,9 +302,7 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
           storeys: state.units.storeys.map((storey) => ({
             ...storey,
             units: storey.units.map((unit) =>
-              unit.id === command.unit.id
-                ? { ...unit, ...command.unit }
-                : unit,
+              unit.id === command.unit.id ? { ...unit, ...command.unit } : unit,
             ),
           })),
         },
@@ -347,6 +373,51 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
       if (!isCurrent(state, command.generation) || state.mode !== "bim")
         return state;
       return { ...state, bimInspection: { status: "loading" } };
+    case "BIM_CATALOG_LOADING":
+      if (!isCurrent(state, command.generation)) return state;
+      return {
+        ...state,
+        bimCatalog: {
+          ...state.bimCatalog,
+          status: "loading",
+          processed: 0,
+          total: 0,
+          error: undefined,
+        },
+      };
+    case "BIM_CATALOG_PROGRESS":
+      if (!isCurrent(state, command.generation)) return state;
+      return {
+        ...state,
+        bimCatalog: {
+          ...state.bimCatalog,
+          status: "loading",
+          processed: command.processed,
+          total: command.total,
+        },
+      };
+    case "BIM_CATALOG_READY":
+      if (!isCurrent(state, command.generation)) return state;
+      return {
+        ...state,
+        bimCatalog: {
+          status: "ready",
+          items: command.items,
+          processed: command.items.length,
+          total: command.items.length,
+          error: undefined,
+        },
+      };
+    case "BIM_CATALOG_FAILED":
+      if (!isCurrent(state, command.generation)) return state;
+      return {
+        ...state,
+        bimCatalog: {
+          ...state.bimCatalog,
+          status: "error",
+          error: command.message,
+        },
+      };
     case "SELECT_BIM_ELEMENT":
       if (!isCurrent(state, command.generation) || state.mode !== "bim")
         return state;
@@ -388,11 +459,7 @@ export function reduceAppState(state: AppState, command: AppCommand): AppState {
         ...state,
         mode: command.mode,
         environmentOpacity:
-          command.mode === "bim"
-            ? 0.10
-            : command.mode === "units"
-              ? 0.25
-              : 1.0,
+          command.mode === "bim" ? 0.1 : command.mode === "units" ? 0.25 : 1.0,
         bimSelection: command.mode === "bim" ? state.bimSelection : undefined,
         bimInspection:
           command.mode === "bim" ? state.bimInspection : { status: "idle" },

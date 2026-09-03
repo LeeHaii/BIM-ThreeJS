@@ -14,6 +14,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type {
   ApartmentSeedsGrouped,
+  BimElementSummary,
   ExtractedApartmentData,
   OperatorViewerPort,
   ViewerLayerState,
@@ -475,6 +476,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
   private storeyTransitionToken = 0;
   private storeyCommitQueue: Promise<void> = Promise.resolve();
   private hoverToken = 0;
+  private selectionToken = 0;
 
   public async initialize(
     container: HTMLElement,
@@ -641,26 +643,103 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
       dom: renderer.three.domElement,
     });
     if (result === undefined) return undefined;
+    return this.inspectBimElement(
+      result.fragments.modelId,
+      result.localId,
+      result.point,
+      false,
+    );
+  }
+
+  public async selectBimElement(
+    element: BimElementSummary,
+    rawData?: Readonly<Record<string, unknown>>,
+  ): Promise<ViewerPick | undefined> {
+    const localId = element.ref.modelLocalId;
+    if (localId === undefined) return undefined;
+    return this.inspectBimElement(
+      element.layerId,
+      localId,
+      undefined,
+      true,
+      rawData,
+      element.box,
+    );
+  }
+
+  private async inspectBimElement(
+    modelId: string,
+    localId: number,
+    pickedPoint: THREE.Vector3 | undefined,
+    focusCamera: boolean,
+    rawData?: Readonly<Record<string, unknown>>,
+    precomputedBox?: {
+      readonly min: readonly [number, number, number];
+      readonly max: readonly [number, number, number];
+    },
+  ): Promise<ViewerPick | undefined> {
+    const token = ++this.selectionToken;
+    const fragments = this.requireFragments();
+    const model = fragments.list.get(modelId);
+    if (model === undefined) return undefined;
+    const data =
+      rawData ??
+      (
+        await model.getItemsData([localId], {
+          attributesDefault: true,
+          relations: {
+            IsDefinedBy: { attributes: true, relations: true },
+            IsTypedBy: { attributes: true, relations: true },
+            HasAssociations: { attributes: true, relations: true },
+            ContainedInStructure: { attributes: true, relations: true },
+            HasAssignments: { attributes: true, relations: true },
+            DefinesType: { attributes: true, relations: true },
+          },
+        })
+      )[0];
+    let box: THREE.Box3 | undefined;
+    if (focusCamera) {
+      if (precomputedBox !== undefined) {
+        box = new THREE.Box3(
+          new THREE.Vector3(...precomputedBox.min),
+          new THREE.Vector3(...precomputedBox.max),
+        );
+      } else {
+        try {
+          const candidate = await model.getMergedBox([localId]);
+          if (!candidate.isEmpty()) box = candidate;
+        } catch {
+          box = undefined;
+        }
+      }
+    }
+    if (token !== this.selectionToken) return undefined;
+
     this.hoverToken++;
     await this.clearHover();
-    await this.clearSelection();
-    const modelId = result.fragments.modelId;
+    await this.resetSelectionHighlight();
+    if (token !== this.selectionToken) return undefined;
     await fragments.highlight(selectionMaterial, {
-      [modelId]: new Set([result.localId]),
+      [modelId]: new Set([localId]),
     });
     await fragments.core.update();
-    this.selected = { modelId, localId: result.localId };
-    const [data] = await result.fragments.getItemsData([result.localId], {
-      attributesDefault: true,
-      relations: {
-        IsDefinedBy: { attributes: true, relations: true },
-        IsTypedBy: { attributes: true, relations: true },
-        HasAssociations: { attributes: true, relations: true },
-        ContainedInStructure: { attributes: true, relations: true },
-        HasAssignments: { attributes: true, relations: true },
-        DefinesType: { attributes: true, relations: true },
-      },
-    });
+    this.selected = { modelId, localId };
+
+    if (focusCamera && box !== undefined) {
+      const size = box.getSize(new THREE.Vector3());
+      const padding = Math.max(size.x, size.y, size.z, 0.25) * 0.35;
+      const animate =
+        typeof window === "undefined" ||
+        typeof window.matchMedia !== "function" ||
+        !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      await this.requireWorld().camera.controls.fitToBox(box, animate, {
+        paddingTop: padding,
+        paddingRight: padding,
+        paddingBottom: padding,
+        paddingLeft: padding,
+      });
+    }
+
     const extracted = extractAllPropertiesAndGroups(
       data as Record<string, unknown> | undefined,
     );
@@ -669,25 +748,35 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     );
     const versionId = manifestLayer?.bim?.modelVersionId;
     if (versionId === undefined) return undefined;
+    const center =
+      pickedPoint ??
+      box?.getCenter(new THREE.Vector3()) ??
+      this.requireWorld().camera.controls.getTarget(new THREE.Vector3());
     return {
+      layerId: modelId,
       ref: {
         modelVersionId: versionId,
-        modelLocalId: result.localId,
+        modelLocalId: localId,
         globalId: propertyNamed(extracted.properties, "GlobalId"),
       },
       title:
         propertyNamed(extracted.properties, "Name", "LongName", "ObjectType") ??
         (extracted.category !== undefined
-          ? `${extracted.category} (${String(result.localId)})`
-          : `Element ${String(result.localId)}`),
+          ? `${extracted.category} (${String(localId)})`
+          : `Element ${String(localId)}`),
       category: extracted.category,
-      worldPosition: [result.point.x, result.point.y, result.point.z],
+      worldPosition: [center.x, center.y, center.z],
       properties: extracted.properties,
       groups: extracted.groups,
     };
   }
 
   public async clearSelection(): Promise<void> {
+    this.selectionToken++;
+    await this.resetSelectionHighlight();
+  }
+
+  private async resetSelectionHighlight(): Promise<void> {
     if (this.selected === undefined || this.fragments === undefined) return;
     const { modelId, localId } = this.selected;
     this.selected = undefined;
@@ -1039,6 +1128,7 @@ export class ThatOpenViewerAdapter implements OperatorViewerPort {
     }
     this.contextLayers.clear();
     this.fragmentLayerIds.clear();
+    this.selectionToken++;
     this.components?.dispose();
     this.components = undefined;
     this.world = undefined;

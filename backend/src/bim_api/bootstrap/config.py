@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     database_url: str = "sqlite:///./bim-platform-v2.db"
-    allow_dev_auth: bool = False
+    allow_dev_auth: bool = True
     seed_synthetic_data: bool = True
     seed_path: Path = (
         Path(__file__).resolve().parents[4] / "database" / "seeds" / "synthetic" / "platform.json"

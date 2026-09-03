@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import os
@@ -14,6 +15,9 @@ from .common import ApiError
 from .schemas import (
     ActionResponse,
     AdminOccupancyView,
+    BimCatalogView,
+    BimElementMetadataView,
+    BimIndexStatusView,
     BuildingDetail,
     CameraPoseInput,
     CreateBuildingRequest,
@@ -32,6 +36,69 @@ from .schemas import (
 from .services import BuildingService, ModelService, UnitService
 
 router = APIRouter(prefix="/api/v1")
+
+BIM_INDEX_EXTRACTOR_VERSION = "@bim/model-pipeline@0.1.0+fragments-3.4.7"
+
+
+async def save_upload(upload: UploadFile, target: Path) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    byte_size = 0
+    with target.open("wb") as output:
+        while chunk := await upload.read(1024 * 1024):
+            output.write(chunk)
+            digest.update(chunk)
+            byte_size += len(chunk)
+    return byte_size, digest.hexdigest()
+
+
+def file_size_and_hash(path: Path) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    byte_size = 0
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+            byte_size += len(chunk)
+    return byte_size, digest.hexdigest()
+
+
+def safe_upload_filename(filename: str | None, fallback: str) -> str:
+    candidate = (filename or fallback).replace("\\", "/").rsplit("/", 1)[-1]
+    return candidate or fallback
+
+
+def run_pipeline(root: Path, arguments: list[str], timeout: int = 300) -> None:
+    env = os.environ.copy()
+    env["NODE_OPTIONS"] = "--max-old-space-size=8192"
+    try:
+        result = subprocess.run(
+            ["pnpm", "--filter", "@bim/model-pipeline", *arguments],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            shell=True,
+            env=env,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ApiError(422, "model_pipeline_timeout", "Model processing timed out") from exc
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or "Unknown error"
+        raise ApiError(422, "model_pipeline_failed", f"Model processing failed: {message}")
+
+
+def resolve_model_asset(root: Path, asset_url: str) -> Path:
+    prefix = "/model-assets/"
+    if not asset_url.startswith(prefix):
+        raise ApiError(422, "unsupported_model_asset", "Active model is not a local asset")
+    asset_root = (root / "frontend" / "public" / "model-assets").resolve()
+    candidate = (asset_root / asset_url.removeprefix(prefix)).resolve()
+    try:
+        candidate.relative_to(asset_root)
+    except ValueError as exc:
+        raise ApiError(422, "invalid_model_asset", "Active model asset path is invalid") from exc
+    if not candidate.is_file():
+        raise ApiError(404, "model_asset_not_found", "Active model asset was not found")
+    return candidate
 
 
 def session_dependency(request: Request) -> Iterator[Session]:
@@ -93,6 +160,53 @@ def get_active_scene_manifest(
     building_id: str, request: Request, session: SessionDependency, actor: ActorDependency
 ) -> dict[str, object]:
     return request.app.state.models.get_active_scene_manifest(session, actor, building_id)
+
+
+@router.get(
+    "/buildings/{building_id}/models/{model_version_id}/bim-index/catalog",
+    response_model=BimCatalogView,
+    response_model_exclude_none=True,
+)
+def get_bim_catalog(
+    building_id: str,
+    model_version_id: str,
+    response: Response,
+    request: Request,
+    session: SessionDependency,
+    actor: ActorDependency,
+) -> Response | BimCatalogView:
+    result = request.app.state.models.get_bim_catalog(session, actor, building_id, model_version_id)
+    etag = f'"{result.source_hash}-catalog-v{result.schema_version}"'
+    response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+    response.headers["ETag"] = etag
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=dict(response.headers))
+    return result
+
+
+@router.get(
+    "/buildings/{building_id}/models/{model_version_id}/bim-index/elements/{model_local_id}",
+    response_model=BimElementMetadataView,
+    response_model_exclude_none=True,
+)
+def get_bim_element(
+    building_id: str,
+    model_version_id: str,
+    model_local_id: int,
+    response: Response,
+    request: Request,
+    session: SessionDependency,
+    actor: ActorDependency,
+) -> Response | BimElementMetadataView:
+    result = request.app.state.models.get_bim_element(
+        session, actor, building_id, model_version_id, model_local_id
+    )
+    etag = f'"{model_version_id}-{model_local_id}-metadata-v1"'
+    response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+    response.headers["ETag"] = etag
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=dict(response.headers))
+    return result
 
 
 @router.get("/buildings/{building_id}/units", response_model=Page)
@@ -192,6 +306,55 @@ def update_default_camera(
     )
 
 
+@router.get(
+    "/admin/buildings/{building_id}/models/active/bim-index/status",
+    response_model=BimIndexStatusView,
+    response_model_exclude_none=True,
+)
+def get_bim_index_status(
+    building_id: str,
+    request: Request,
+    session: SessionDependency,
+    actor: ActorDependency,
+) -> BimIndexStatusView:
+    return request.app.state.models.get_bim_index_status(session, actor, building_id)
+
+
+@router.post(
+    "/admin/buildings/{building_id}/models/active/bim-index/build",
+    response_model=BimIndexStatusView,
+    response_model_exclude_none=True,
+)
+def build_bim_index(
+    building_id: str,
+    request: Request,
+    session: SessionDependency,
+    actor: ActorDependency,
+) -> BimIndexStatusView:
+    root = Path(__file__).resolve().parents[4]
+    manifest = request.app.state.models.get_active_manifest(session, actor, building_id)
+    layers = manifest.get("fragmentLayers", [])
+    fragment_layer = next((layer for layer in layers if isinstance(layer, dict)), None)
+    if fragment_layer is None:
+        raise ApiError(404, "fragment_layer_not_found", "Active BIM fragment layer was not found")
+    asset = fragment_layer.get("asset")
+    if not isinstance(asset, dict) or not isinstance(asset.get("url"), str):
+        raise ApiError(422, "invalid_model_manifest", "Active model asset is invalid")
+    fragment_path = resolve_model_asset(root, asset["url"])
+    output_path = Path(f"{fragment_path}.bim-index.ndjson")
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        run_pipeline(root, ["extract:bim-index", str(fragment_path), str(output_path)])
+    _, source_hash = file_size_and_hash(fragment_path)
+    return request.app.state.models.import_bim_index_file(
+        session,
+        actor,
+        building_id,
+        output_path,
+        source_hash,
+        BIM_INDEX_EXTRACTOR_VERSION,
+    )
+
+
 @router.post(
     "/admin/buildings/{building_id}/models/active/unit-bindings",
     response_model=UnitBindingImportView,
@@ -222,93 +385,59 @@ async def upload_models(
     model_name: Annotated[str, Form()] = "Architectural Model",
     env_name: Annotated[str, Form()] = "Surrounding Context",
 ) -> dict[str, object]:
-    # Determine public asset path
     root = Path(__file__).resolve().parents[4]
     asset_dir = root / "frontend" / "public" / "model-assets"
     asset_dir.mkdir(parents=True, exist_ok=True)
-
-    ifc_bytes = await ifc_file.read()
-    gltf_bytes = await gltf_file.read()
-
-    if len(ifc_bytes) == 0:
-        raise ApiError(400, "empty_file", "IFC model file cannot be empty")
-    if len(gltf_bytes) == 0:
-        raise ApiError(400, "empty_file", "GLTF environment file cannot be empty")
-
-    gltf_hash = hashlib.sha256(gltf_bytes).hexdigest()
-    gltf_filename = gltf_file.filename or "environment.glb"
+    gltf_filename = safe_upload_filename(gltf_file.filename, "environment.glb")
     target_gltf_name = f"{building_id}-{gltf_filename}"
     target_gltf_path = asset_dir / target_gltf_name
-    target_gltf_path.write_bytes(gltf_bytes)
+    gltf_byte_size, gltf_hash = await save_upload(gltf_file, target_gltf_path)
+    if gltf_byte_size == 0:
+        target_gltf_path.unlink(missing_ok=True)
+        raise ApiError(400, "empty_file", "GLTF environment file cannot be empty")
 
-    ifc_filename = ifc_file.filename or "model.frag"
+    ifc_filename = safe_upload_filename(ifc_file.filename, "model.frag")
     unit_binding_index: dict[str, object] | None = None
     if ifc_filename.lower().endswith(".ifc"):
-        # Save raw IFC source file
         source_ifc_name = f"{building_id}-source.ifc"
         source_ifc_path = asset_dir / source_ifc_name
-        source_ifc_path.write_bytes(ifc_bytes)
-
-        # Convert to .frag
+        source_byte_size, _ = await save_upload(ifc_file, source_ifc_path)
+        if source_byte_size == 0:
+            source_ifc_path.unlink(missing_ok=True)
+            raise ApiError(400, "empty_file", "IFC model file cannot be empty")
         target_ifc_name = f"{building_id}-model.frag"
         target_ifc_path = asset_dir / target_ifc_name
-
-        cmd = [
-            "pnpm",
-            "--filter",
-            "@bim/model-pipeline",
-            "convert:ifc",
-            str(source_ifc_path),
-            str(target_ifc_path),
-        ]
-        env = os.environ.copy()
-        env["NODE_OPTIONS"] = "--max-old-space-size=8192"
-
-        try:
-            result = subprocess.run(
-                cmd,
-                cwd=str(root),
-                capture_output=True,
-                text=True,
-                shell=True,
-                env=env,
-                timeout=300,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise ApiError(
-                422,
-                "ifc_conversion_timeout",
-                "IFC conversion timed out after 300 seconds",
-            ) from exc
-
-        if result.returncode != 0:
-            err_msg = result.stderr.strip() or result.stdout.strip() or "Unknown error"
-            raise ApiError(
-                422,
-                "ifc_conversion_failed",
-                f"Failed to convert IFC to Fragments: {err_msg}",
-            )
-
+        await asyncio.to_thread(
+            run_pipeline,
+            root,
+            ["convert:ifc", str(source_ifc_path), str(target_ifc_path)],
+        )
         if not target_ifc_path.exists():
             raise ApiError(
                 422,
                 "ifc_conversion_failed",
                 "Conversion succeeded but output .frag was not found",
             )
-
-        frag_bytes = target_ifc_path.read_bytes()
-        ifc_byte_size = len(frag_bytes)
-        ifc_hash = hashlib.sha256(frag_bytes).hexdigest()
+        ifc_byte_size, ifc_hash = await asyncio.to_thread(file_size_and_hash, target_ifc_path)
         binding_index_path = Path(f"{target_ifc_path}.unit-bindings.json")
         if binding_index_path.exists():
             unit_binding_index = json.loads(binding_index_path.read_text(encoding="utf-8"))
     else:
-        # Direct .frag upload
         target_ifc_name = f"{building_id}-{ifc_filename}"
         target_ifc_path = asset_dir / target_ifc_name
-        target_ifc_path.write_bytes(ifc_bytes)
-        ifc_byte_size = len(ifc_bytes)
-        ifc_hash = hashlib.sha256(ifc_bytes).hexdigest()
+        ifc_byte_size, ifc_hash = await save_upload(ifc_file, target_ifc_path)
+        if ifc_byte_size == 0:
+            target_ifc_path.unlink(missing_ok=True)
+            raise ApiError(400, "empty_file", "IFC model file cannot be empty")
+
+    bim_index_path = Path(f"{target_ifc_path}.bim-index.ndjson")
+    if not bim_index_path.exists() or not ifc_filename.lower().endswith(".ifc"):
+        bim_index_path.unlink(missing_ok=True)
+        await asyncio.to_thread(
+            run_pipeline,
+            root,
+            ["extract:bim-index", str(target_ifc_path), str(bim_index_path)],
+        )
 
     setup_request = SetupModelsRequest(
         model_name=model_name,
@@ -317,12 +446,23 @@ async def upload_models(
         ifc_content_hash=ifc_hash,
         env_name=env_name,
         env_asset_url=f"/model-assets/{target_gltf_name}",
-        env_byte_size=len(gltf_bytes),
+        env_byte_size=gltf_byte_size,
         env_content_hash=gltf_hash,
         unit_binding_index=unit_binding_index,
     )
 
-    return request.app.state.models.setup_models(session, actor, building_id, setup_request)
+    request.app.state.models.setup_models(
+        session, actor, building_id, setup_request
+    )
+    request.app.state.models.import_bim_index_file(
+        session,
+        actor,
+        building_id,
+        bim_index_path,
+        ifc_hash,
+        BIM_INDEX_EXTRACTOR_VERSION,
+    )
+    return request.app.state.models.get_active_scene_manifest(session, actor, building_id)
 
 
 # Admin Unit CRUD

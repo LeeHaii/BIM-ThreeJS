@@ -1,7 +1,11 @@
 import type { CameraPose, HouseholdStorey, UnitId } from "@bim/shared";
 import type { AppStore } from "../../app/app-store.js";
+import type { AppCoordinator } from "../../app/app-coordinator.js";
 import { ThatOpenViewerAdapter } from "../../infrastructure/thatopen/thatopen-viewer-adapter.js";
-import type { ApartmentSeedsGrouped } from "./viewer-port.js";
+import type {
+  ApartmentSeedsGrouped,
+  BimElementSummary,
+} from "./viewer-port.js";
 
 function errorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === "AbortError") return "";
@@ -14,10 +18,13 @@ export class ViewerSessionController {
   private resizeObserver: ResizeObserver | undefined;
   private unsubscribe: (() => void) | undefined;
   private sceneVersionId: string | undefined;
+  private bimCatalogPromise: Promise<void> | undefined;
+  private bimSelectionToken = 0;
 
   public constructor(
     private readonly store: AppStore,
     private readonly container: HTMLElement,
+    private readonly coordinator: AppCoordinator,
   ) {}
 
   public start(): void {
@@ -36,6 +43,8 @@ export class ViewerSessionController {
     )
       return;
     this.sceneVersionId = manifest.sceneVersionId;
+    this.bimCatalogPromise = undefined;
+    this.bimSelectionToken++;
     this.loadController?.abort();
     await this.adapter?.dispose();
     this.container.replaceChildren();
@@ -66,6 +75,9 @@ export class ViewerSessionController {
       );
       this.store.dispatch({ type: "VIEWER_READY", generation, layers });
       adapter.resize();
+      if (this.store.getState().mode === "bim") {
+        await this.ensureBimCatalog();
+      }
     } catch (error: unknown) {
       const message = errorMessage(error);
       if (message.length > 0)
@@ -74,6 +86,7 @@ export class ViewerSessionController {
   }
 
   public async setMode(mode: "overview" | "bim" | "units"): Promise<void> {
+    if (mode !== "bim") this.bimSelectionToken++;
     if (mode !== "units") await this.adapter?.clearStoreyView();
     if (mode === "overview") {
       await this.adapter?.clearSelection();
@@ -90,6 +103,55 @@ export class ViewerSessionController {
       this.store.dispatch({ type: "SET_ENVIRONMENT_OPACITY", opacity: 0.25 });
     }
     this.store.dispatch({ type: "ENTER_MODE", mode });
+    if (mode === "bim") await this.ensureBimCatalog();
+  }
+
+  public ensureBimCatalog(): Promise<void> {
+    const state = this.store.getState();
+    if (
+      state.viewer.status !== "ready" ||
+      state.bimCatalog.status === "ready" ||
+      this.adapter === undefined
+    ) {
+      return Promise.resolve();
+    }
+    if (this.bimCatalogPromise !== undefined) return this.bimCatalogPromise;
+
+    const generation = state.generation;
+    this.store.dispatch({ type: "BIM_CATALOG_LOADING", generation });
+    const descriptor = state.model.manifest?.bimIndex;
+    if (descriptor === undefined) {
+      this.store.dispatch({
+        type: "BIM_CATALOG_FAILED",
+        generation,
+        message:
+          "BIM metadata has not been indexed. Build it from Admin first.",
+      });
+      return Promise.resolve();
+    }
+    const promise = (async () => {
+      try {
+        const catalog = await this.coordinator.getBimCatalog(descriptor);
+        this.store.dispatch({
+          type: "BIM_CATALOG_READY",
+          generation,
+          items: catalog.elements,
+        });
+      } catch (error: unknown) {
+        this.store.dispatch({
+          type: "BIM_CATALOG_FAILED",
+          generation,
+          message: errorMessage(error) || "Could not read BIM structure",
+        });
+      }
+    })();
+    this.bimCatalogPromise = promise;
+    void promise.finally(() => {
+      if (this.bimCatalogPromise === promise) {
+        this.bimCatalogPromise = undefined;
+      }
+    });
+    return promise;
   }
 
   public async hoverAt(clientX: number, clientY: number): Promise<void> {
@@ -118,12 +180,14 @@ export class ViewerSessionController {
       return this.adapter?.pickUnit(clientX, clientY);
     }
     if (state.mode !== "bim") return undefined;
+    const token = ++this.bimSelectionToken;
     this.store.dispatch({
       type: "BIM_ELEMENT_LOADING",
       generation: state.generation,
     });
     try {
       const selection = await this.adapter?.pick(clientX, clientY);
+      if (token !== this.bimSelectionToken) return undefined;
       if (selection === undefined) {
         await this.adapter?.clearSelection();
         this.store.dispatch({ type: "CLEAR_BIM_SELECTION" });
@@ -136,9 +200,49 @@ export class ViewerSessionController {
       });
       return undefined;
     } catch {
+      if (token !== this.bimSelectionToken) return undefined;
       await this.adapter?.clearSelection();
       this.store.dispatch({ type: "CLEAR_BIM_SELECTION" });
       return undefined;
+    }
+  }
+
+  public async selectBimElement(element: BimElementSummary): Promise<void> {
+    const state = this.store.getState();
+    if (state.viewer.status !== "ready" || state.mode !== "bim") return;
+    const token = ++this.bimSelectionToken;
+    this.store.dispatch({
+      type: "BIM_ELEMENT_LOADING",
+      generation: state.generation,
+    });
+    try {
+      const descriptor = state.model.manifest?.bimIndex;
+      if (descriptor === undefined || element.ref.modelLocalId === undefined) {
+        this.store.dispatch({ type: "CLEAR_BIM_SELECTION" });
+        return;
+      }
+      const metadata = await this.coordinator.getBimElementMetadata(
+        descriptor,
+        element.ref.modelLocalId,
+      );
+      const selection = await this.adapter?.selectBimElement(
+        element,
+        metadata.rawData,
+      );
+      if (token !== this.bimSelectionToken) return;
+      if (selection === undefined) {
+        this.store.dispatch({ type: "CLEAR_BIM_SELECTION" });
+        return;
+      }
+      this.store.dispatch({
+        type: "SELECT_BIM_ELEMENT",
+        generation: state.generation,
+        selection,
+      });
+    } catch {
+      if (token !== this.bimSelectionToken) return;
+      await this.adapter?.clearSelection();
+      this.store.dispatch({ type: "CLEAR_BIM_SELECTION" });
     }
   }
 

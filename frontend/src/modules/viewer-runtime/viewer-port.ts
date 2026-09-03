@@ -1,5 +1,6 @@
 import type {
   CameraPose,
+  BimCatalogElement,
   ElementRef,
   HouseholdStorey,
   PropertyEntry,
@@ -18,6 +19,7 @@ export interface ViewerLayerState {
 }
 
 export interface ViewerPick {
+  readonly layerId: string;
   readonly ref: ElementRef;
   readonly title: string;
   readonly category?: string | undefined;
@@ -25,6 +27,8 @@ export interface ViewerPick {
   readonly properties: readonly PropertyEntry[];
   readonly groups?: readonly PropertyGroup[] | undefined;
 }
+
+export type BimElementSummary = BimCatalogElement;
 
 export interface ExtractedApartmentData {
   readonly Apartment: string;
@@ -52,6 +56,10 @@ export interface OperatorViewerPort {
     ) => void,
   ): Promise<readonly ViewerLayerState[]>;
   pick(clientX: number, clientY: number): Promise<ViewerPick | undefined>;
+  selectBimElement(
+    element: BimElementSummary,
+    rawData?: Readonly<Record<string, unknown>>,
+  ): Promise<ViewerPick | undefined>;
   clearSelection(): Promise<void>;
   hover(clientX: number, clientY: number): Promise<void>;
   clearHover(): Promise<void>;

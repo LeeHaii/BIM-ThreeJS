@@ -1,7 +1,12 @@
-import type { HouseholdStorey } from "@bim/shared";
+import type {
+  HouseholdStorey,
+  ModelVersionId,
+  SceneManifestV2,
+} from "@bim/shared";
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { ThatOpenViewerAdapter } from "../src/infrastructure/thatopen/thatopen-viewer-adapter.js";
+import type { BimElementSummary } from "../src/modules/viewer-runtime/viewer-port.js";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -187,5 +192,87 @@ describe("ThatOpenViewerAdapter default camera", () => {
     await adapter.resetCamera();
 
     expect(setLookAt).toHaveBeenCalledWith(12, 8, -4, 1, 2, 3, true);
+  });
+});
+
+describe("ThatOpenViewerAdapter BIM structure", () => {
+  it("focuses a selected catalog element using precomputed bounding box without geometry query", async () => {
+    const modelVersionId =
+      "32222222-2222-4222-8222-222222222222" as ModelVersionId;
+    const itemData = {
+      _localId: { value: 42 },
+      _category: { value: "IfcWall" },
+      _guid: { value: "wall-guid" },
+      Name: { value: "Exterior wall" },
+    };
+    const model = {
+      getLocalIds: vi.fn().mockResolvedValue([42]),
+      getItemsData: vi.fn().mockResolvedValue([itemData]),
+      getMergedBox: vi.fn(),
+    };
+    const fitToBox = vi.fn().mockResolvedValue([]);
+    const fragments = {
+      list: { get: vi.fn().mockReturnValue(model) },
+      highlight: vi.fn().mockResolvedValue(undefined),
+      resetHighlight: vi.fn().mockResolvedValue(undefined),
+      core: { update: vi.fn().mockResolvedValue(undefined) },
+    };
+    const adapter = new ThatOpenViewerAdapter();
+    const internals = adapter as unknown as {
+      fragments: typeof fragments;
+      manifest: SceneManifestV2;
+      fragmentLayerIds: Set<string>;
+      world: {
+        camera: {
+          controls: {
+            fitToBox: typeof fitToBox;
+            getTarget: (out: THREE.Vector3) => THREE.Vector3;
+          };
+        };
+      };
+    };
+    internals.fragments = fragments;
+    internals.manifest = {
+      layers: [
+        {
+          id: "model-main",
+          bim: { modelVersionId },
+        },
+      ],
+    } as unknown as SceneManifestV2;
+    internals.fragmentLayerIds.add("model-main");
+    internals.world = {
+      camera: {
+        controls: {
+          fitToBox,
+          getTarget: (out) => out.set(0, 0, 0),
+        },
+      },
+    };
+
+    const element: BimElementSummary = {
+      layerId: "model-main",
+      ref: { modelVersionId, modelLocalId: 42, globalId: "wall-guid" },
+      title: "Exterior wall",
+      category: "IfcWall",
+      box: { min: [10, 2, -5], max: [14, 6, -1] },
+    };
+
+    const selection = await adapter.selectBimElement(element);
+    expect(fragments.highlight).toHaveBeenCalledWith(expect.any(Object), {
+      "model-main": new Set([42]),
+    });
+    expect(model.getMergedBox).not.toHaveBeenCalled();
+    expect(fitToBox).toHaveBeenCalledWith(
+      expect.any(THREE.Box3),
+      true,
+      expect.objectContaining({ paddingLeft: 1.4 }),
+    );
+    expect(selection).toMatchObject({
+      layerId: "model-main",
+      title: "Exterior wall",
+      category: "IfcWall",
+      worldPosition: [12, 4, -3],
+    });
   });
 });

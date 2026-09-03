@@ -31,9 +31,26 @@ backend/.venv/
 # Databases & Runtime storage
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 *.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.dump
+*.sql
+
+# Generated BIM & Model Pipeline data artifacts
+*.ndjson
+*.jsonl
+*.bim-index.ndjson
+*.bim-index.ndjson.report.json
+*.unit-bindings.json
+
 
 # Environment & Secret files
 .env

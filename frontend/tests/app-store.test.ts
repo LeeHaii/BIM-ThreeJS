@@ -72,6 +72,7 @@ describe("application reducer", () => {
       ...initialState,
       mode: "bim" as const,
       bimSelection: {
+        layerId: "model-main",
         ref: {
           modelVersionId: "32222222-2222-4222-8222-222222222222" as never,
           modelLocalId: 42,
@@ -107,7 +108,11 @@ describe("application reducer", () => {
     const state = {
       ...initialState,
       generation: 4,
-      building: { selectedId: ALPHA, detail: undefined, status: "ready" as const },
+      building: {
+        selectedId: ALPHA,
+        detail: undefined,
+        status: "ready" as const,
+      },
       units: {
         ...initialState.units,
         items: [unit],
@@ -157,6 +162,7 @@ describe("application reducer", () => {
       type: "SELECT_BIM_ELEMENT",
       generation: 1,
       selection: {
+        layerId: "model-main",
         ref: {
           modelVersionId: "32222222-2222-4222-8222-222222222222" as never,
           modelLocalId: 1042,
@@ -168,6 +174,49 @@ describe("application reducer", () => {
     });
     expect(readyState.bimInspection.status).toBe("ready");
     expect(readyState.bimSelection?.title).toBe("Wall 1042");
+  });
+
+  it("tracks BIM catalog progress and ignores stale catalog completions", () => {
+    const loading = reduceAppState(
+      { ...initialState, generation: 3 },
+      { type: "BIM_CATALOG_LOADING", generation: 3 },
+    );
+    const progress = reduceAppState(loading, {
+      type: "BIM_CATALOG_PROGRESS",
+      generation: 3,
+      processed: 100,
+      total: 250,
+    });
+    expect(progress.bimCatalog).toMatchObject({
+      status: "loading",
+      processed: 100,
+      total: 250,
+    });
+
+    const stale = reduceAppState(progress, {
+      type: "BIM_CATALOG_READY",
+      generation: 2,
+      items: [],
+    });
+    expect(stale).toBe(progress);
+
+    const ready = reduceAppState(progress, {
+      type: "BIM_CATALOG_READY",
+      generation: 3,
+      items: [
+        {
+          layerId: "model-main",
+          ref: {
+            modelVersionId: "32222222-2222-4222-8222-222222222222" as never,
+            modelLocalId: 42,
+          },
+          title: "Wall",
+          category: "IfcWall",
+        },
+      ],
+    });
+    expect(ready.bimCatalog.status).toBe("ready");
+    expect(ready.bimCatalog.items[0]?.category).toBe("IfcWall");
   });
 
   it("sets environmentOpacity to 0.10 when entering BIM mode and allows updating opacity", () => {

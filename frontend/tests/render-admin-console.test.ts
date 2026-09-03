@@ -70,6 +70,7 @@ describe("renderAdminConsole household pagination", () => {
       getActiveSceneManifest: vi.fn(() =>
         Promise.reject(new Error("No active scene")),
       ),
+      getBimIndexStatus: vi.fn(() => Promise.resolve(null)),
       searchUnits,
     } as unknown as ApiClient;
 
@@ -87,13 +88,15 @@ describe("renderAdminConsole household pagination", () => {
       .querySelector<HTMLButtonElement>(".admin-tab[data-tab='households']")
       ?.click();
 
-    expect(root.querySelectorAll(".admin-table tbody tr")).toHaveLength(25);
-    expect(root.querySelector(".admin-pagination-summary")?.textContent).toBe(
-      "Showing 1–25 of 125",
-    );
-    expect(root.querySelector(".admin-page-status")?.textContent).toBe(
-      "Page 1 of 5",
-    );
+    await vi.waitFor(() => {
+      expect(root.querySelectorAll(".admin-table tbody tr")).toHaveLength(25);
+      expect(root.querySelector(".admin-pagination-summary")?.textContent).toBe(
+        "Showing 1–25 of 125",
+      );
+      expect(root.querySelector(".admin-page-status")?.textContent).toBe(
+        "Page 1 of 5",
+      );
+    });
 
     root
       .querySelector<HTMLButtonElement>(".btn-unit-page[data-page='2']")

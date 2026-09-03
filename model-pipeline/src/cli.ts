@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { convertIfcToFragments } from "./services/ifc-fragment-conversion-service.js";
 import { extractIfcUnitBindings } from "./services/ifc-unit-binding-service.js";
+import { extractFragmentsBimIndex } from "./services/fragments-bim-index-service.js";
 import { validateOnboardingPackage } from "./services/onboarding-validator.js";
 
 async function main(): Promise<void> {
@@ -20,18 +21,31 @@ async function main(): Promise<void> {
   }
   if (command === "extract-unit-bindings") {
     if (inputPath === undefined || outputPath === undefined) {
-      throw new Error(
-        "Usage: extract-unit-bindings <input.ifc> <output.json>",
-      );
+      throw new Error("Usage: extract-unit-bindings <input.ifc> <output.json>");
     }
     const result = await extractIfcUnitBindings({ inputPath });
-    await writeFile(resolve(outputPath), `${JSON.stringify(result, null, 2)}\n`);
+    await writeFile(
+      resolve(outputPath),
+      `${JSON.stringify(result, null, 2)}\n`,
+    );
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+  if (command === "extract-bim-index") {
+    if (inputPath === undefined || outputPath === undefined) {
+      throw new Error("Usage: extract-bim-index <input.frag> <output.ndjson>");
+    }
+    const result = await extractFragmentsBimIndex({ inputPath, outputPath });
+    await writeFile(
+      `${resolve(outputPath)}.report.json`,
+      `${JSON.stringify(result, null, 2)}\n`,
+    );
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
   }
   if (command !== "validate-onboarding" || inputPath === undefined) {
     throw new Error(
-      "Usage: validate-onboarding <package.json> | convert-ifc <input.ifc> <output.frag> | extract-unit-bindings <input.ifc> <output.json>",
+      "Usage: validate-onboarding <package.json> | convert-ifc <input.ifc> <output.frag> | extract-unit-bindings <input.ifc> <output.json> | extract-bim-index <input.frag> <output.ndjson>",
     );
   }
 

@@ -1,5 +1,8 @@
 import {
   adminOccupancySchema,
+  bimCatalogSchema,
+  bimElementMetadataSchema,
+  bimIndexStatusSchema,
   buildingDetailSchema,
   buildingSummarySchema,
   householdIndexSchema,
@@ -10,6 +13,10 @@ import {
 } from "@bim/shared";
 import type {
   AdminOccupancy,
+  BimCatalog,
+  BimElementMetadata,
+  BimIndexDescriptor,
+  BimIndexStatus,
   BuildingDetail,
   BuildingId,
   BuildingSummary,
@@ -39,6 +46,12 @@ const actionResponseSchema = z.object({
 });
 
 export class ApiClient {
+  private readonly bimCatalogCache = new Map<string, Promise<BimCatalog>>();
+  private readonly bimElementCache = new Map<
+    string,
+    Promise<BimElementMetadata>
+  >();
+
   public constructor(
     private readonly baseUrl: string,
     private readonly actorId: string,
@@ -107,6 +120,48 @@ export class ApiClient {
       sceneManifestV2Schema,
       signal,
     );
+  }
+
+  public getBimCatalog(
+    descriptor: BimIndexDescriptor,
+    signal?: AbortSignal,
+  ): Promise<BimCatalog> {
+    const key = descriptor.catalogUrl;
+    const cached = this.bimCatalogCache.get(key);
+    if (cached !== undefined) return cached;
+    const request = this.request(key, bimCatalogSchema, signal, {
+      cache: "force-cache",
+    });
+    this.bimCatalogCache.set(key, request);
+    void request.catch(() => {
+      if (this.bimCatalogCache.get(key) === request) {
+        this.bimCatalogCache.delete(key);
+      }
+    });
+    return request;
+  }
+
+  public getBimElementMetadata(
+    descriptor: BimIndexDescriptor,
+    modelLocalId: number,
+    signal?: AbortSignal,
+  ): Promise<BimElementMetadata> {
+    const path = descriptor.elementUrlTemplate.replace(
+      "{localId}",
+      encodeURIComponent(String(modelLocalId)),
+    );
+    const cached = this.bimElementCache.get(path);
+    if (cached !== undefined) return cached;
+    const request = this.request(path, bimElementMetadataSchema, signal, {
+      cache: "force-cache",
+    });
+    this.bimElementCache.set(path, request);
+    void request.catch(() => {
+      if (this.bimElementCache.get(path) === request) {
+        this.bimElementCache.delete(path);
+      }
+    });
+    return request;
   }
 
   public searchUnits(
@@ -233,6 +288,29 @@ export class ApiClient {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pose),
       },
+    );
+  }
+
+  public getBimIndexStatus(
+    buildingId: BuildingId,
+    signal?: AbortSignal,
+  ): Promise<BimIndexStatus> {
+    return this.request(
+      `/admin/buildings/${buildingId}/models/active/bim-index/status`,
+      bimIndexStatusSchema,
+      signal,
+    );
+  }
+
+  public buildBimIndex(
+    buildingId: BuildingId,
+    signal?: AbortSignal,
+  ): Promise<BimIndexStatus> {
+    return this.request(
+      `/admin/buildings/${buildingId}/models/active/bim-index/build`,
+      bimIndexStatusSchema,
+      signal,
+      { method: "POST" },
     );
   }
 

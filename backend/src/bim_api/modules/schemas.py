@@ -199,6 +199,47 @@ class ActionResponse(ApiModel):
     message: str = ""
 
 
+class BimIndexStatusView(ApiModel):
+    status: str
+    schema_version: str | None = None
+    extractor_version: str | None = None
+    source_hash: str | None = None
+    element_count: int = 0
+    generated_at: str | None = None
+    error: str | None = None
+
+
+class BimElementRefView(ApiModel):
+    model_version_id: str
+    model_local_id: int
+    global_id: str | None = None
+
+
+class AABBView(ApiModel):
+    min: tuple[float, float, float]
+    max: tuple[float, float, float]
+
+
+class BimCatalogElementView(ApiModel):
+    layer_id: str
+    ref: BimElementRefView
+    title: str
+    category: str
+    box: AABBView | None = None
+
+
+class BimCatalogView(ApiModel):
+    schema_version: str
+    model_version_id: str
+    source_hash: str
+    elements: list[BimCatalogElementView]
+
+
+class BimElementMetadataView(ApiModel):
+    element: BimCatalogElementView
+    raw_data: dict[str, Any]
+
+
 class Page(ApiModel):
     items: list[Any]
     page: int = Field(ge=1)

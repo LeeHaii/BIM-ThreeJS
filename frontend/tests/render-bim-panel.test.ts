@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ModelVersionId } from "@bim/shared";
 import { initialState } from "../src/app/app-state.js";
 import { renderBimPanel } from "../src/modules/bim-inspection/render-bim-panel.js";
@@ -23,8 +23,10 @@ describe("renderBimPanel", () => {
       ...initialState,
       mode: "bim" as const,
       bimSelection: {
+        layerId: "model-main",
         ref: {
-          modelVersionId: "32222222-2222-4222-8222-222222222222" as ModelVersionId,
+          modelVersionId:
+            "32222222-2222-4222-8222-222222222222" as ModelVersionId,
           modelLocalId: 1042,
           globalId: "2O2_b$VQ51Ov$FTBXZ$Clay",
         },
@@ -83,17 +85,21 @@ describe("renderBimPanel", () => {
     // Verify Coordinates
     const coords = container.querySelectorAll(".coord-card");
     expect(coords).toHaveLength(3);
-    expect(coords[0]?.querySelector(".coord-value")?.textContent).toBe("12.450");
+    expect(coords[0]?.querySelector(".coord-value")?.textContent).toBe(
+      "12.450",
+    );
     expect(coords[1]?.querySelector(".coord-value")?.textContent).toBe("3.200");
-    expect(coords[2]?.querySelector(".coord-value")?.textContent).toBe("-5.800");
+    expect(coords[2]?.querySelector(".coord-value")?.textContent).toBe(
+      "-5.800",
+    );
 
     // Verify Accordion Groups
     const groupCards = container.querySelectorAll(".bim-group-card");
     expect(groupCards).toHaveLength(3);
 
-    const groupTitles = [
-      ...container.querySelectorAll(".bim-group-title"),
-    ].map((el) => el.textContent);
+    const groupTitles = [...container.querySelectorAll(".bim-group-title")].map(
+      (el) => el.textContent,
+    );
     expect(groupTitles).toEqual([
       "Attributes & Identity",
       "Pset_WallCommon",
@@ -120,7 +126,9 @@ describe("renderBimPanel", () => {
 
     renderBimPanel(container, loadingState);
 
-    expect(container.querySelector("h2")?.textContent).toBe("Loading Element...");
+    expect(container.querySelector("h2")?.textContent).toBe(
+      "Loading Element...",
+    );
     expect(container.querySelector(".bim-loading-spinner")).not.toBeNull();
     expect(container.querySelector(".bim-loading-text")?.textContent).toContain(
       "Extracting IFC Metadata",
@@ -133,8 +141,10 @@ describe("renderBimPanel", () => {
       ...initialState,
       mode: "bim" as const,
       bimSelection: {
+        layerId: "model-main",
         ref: {
-          modelVersionId: "32222222-2222-4222-8222-222222222222" as ModelVersionId,
+          modelVersionId:
+            "32222222-2222-4222-8222-222222222222" as ModelVersionId,
           modelLocalId: 1042,
         },
         title: "Wall A",
@@ -171,8 +181,10 @@ describe("renderBimPanel", () => {
       ...initialState,
       mode: "bim" as const,
       bimSelection: {
+        layerId: "model-main",
         ref: {
-          modelVersionId: "32222222-2222-4222-8222-222222222222" as ModelVersionId,
+          modelVersionId:
+            "32222222-2222-4222-8222-222222222222" as ModelVersionId,
         },
         title: "Window",
         category: "IfcWindow",
@@ -199,7 +211,7 @@ describe("renderBimPanel", () => {
     renderBimPanel(container, bimState);
 
     const searchInput = container.querySelector<HTMLInputElement>(
-      ".bim-search-input",
+      ".bim-props-toolbar .bim-search-input",
     );
     expect(searchInput).not.toBeNull();
 
@@ -212,7 +224,71 @@ describe("renderBimPanel", () => {
       expect(groups[0]?.querySelector(".bim-group-title")?.textContent).toBe(
         "Pset_WindowCommon",
       );
-      expect(groups[0]?.querySelector("dt")?.textContent).toBe("AcousticRating");
+      expect(groups[0]?.querySelector("dt")?.textContent).toBe(
+        "AcousticRating",
+      );
     }
+  });
+
+  it("groups model elements by category and selects an element from a dropdown", () => {
+    const container = document.createElement("div");
+    const modelVersionId =
+      "32222222-2222-4222-8222-222222222222" as ModelVersionId;
+    const wall = {
+      layerId: "model-main",
+      ref: { modelVersionId, modelLocalId: 42 },
+      title: "Exterior wall",
+      category: "IfcWall",
+    };
+    const onSelect = vi.fn();
+    const state = {
+      ...initialState,
+      mode: "bim" as const,
+      bimCatalog: {
+        status: "ready" as const,
+        processed: 3,
+        total: 3,
+        items: [
+          wall,
+          {
+            layerId: "model-main",
+            ref: { modelVersionId, modelLocalId: 43 },
+            title: "Interior wall",
+            category: "IfcWall",
+          },
+          {
+            layerId: "model-main",
+            ref: { modelVersionId, modelLocalId: 99 },
+            title: "Main door",
+            category: "IfcDoor",
+          },
+        ],
+      },
+    };
+
+    renderBimPanel(container, state, onSelect);
+
+    const categories = container.querySelectorAll(".bim-category-group");
+    expect(categories).toHaveLength(2);
+    expect(
+      [...container.querySelectorAll(".bim-category-title")].map(
+        (element) => element.textContent,
+      ),
+    ).toEqual(["IfcDoor", "IfcWall"]);
+    const wallHeader = [...categories]
+      .find(
+        (category) =>
+          category.querySelector(".bim-category-title")?.textContent ===
+          "IfcWall",
+      )
+      ?.querySelector<HTMLButtonElement>(".bim-category-header");
+    expect(container.querySelectorAll(".bim-element-row")).toHaveLength(0);
+    expect(wallHeader?.getAttribute("aria-expanded")).toBe("false");
+    wallHeader?.click();
+    const wallRow = wallHeader
+      ?.closest(".bim-category-group")
+      ?.querySelector<HTMLButtonElement>(".bim-element-row");
+    wallRow?.click();
+    expect(onSelect).toHaveBeenCalledWith(wall);
   });
 });

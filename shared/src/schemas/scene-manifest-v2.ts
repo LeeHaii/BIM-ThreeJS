@@ -8,6 +8,7 @@ import {
   unitBindingSetIdSchema,
 } from "../domain/ids.js";
 import { cameraPoseSchema } from "./contracts.js";
+import { bimIndexDescriptorSchema } from "./bim-index.js";
 
 const nonEmpty = z.string().trim().min(1);
 const sha256 = z
@@ -95,6 +96,7 @@ export const sceneManifestV2Schema = z.object({
     }),
   ),
   unitBindingSetId: unitBindingSetIdSchema.optional(),
+  bimIndex: bimIndexDescriptorSchema.optional(),
   viewerUi: z.object({
     layout: z.literal("left-upper-viewport"),
     enabledModes: z.array(viewerModeSchema).min(1),

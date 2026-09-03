@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.gzip import GZipMiddleware
 
 from bim_api.infrastructure.database import (
     create_database_engine,
@@ -39,6 +40,7 @@ def create_server(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved_settings
     app.state.session_factory = session_factory
     configure_services(app, AuthorizationService())
+    app.add_middleware(GZipMiddleware, minimum_size=500, compresslevel=6)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(resolved_settings.cors_origins),

@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "convert:ifc": "tsx src/cli.ts convert-ifc",
     "extract:unit-bindings": "tsx src/cli.ts extract-unit-bindings",
+    "extract:bim-index": "tsx src/cli.ts extract-bim-index",
     "lint": "eslint src tests",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",

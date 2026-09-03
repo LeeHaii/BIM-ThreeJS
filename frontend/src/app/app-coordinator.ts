@@ -1,5 +1,8 @@
 import type {
   AdminOccupancy,
+  BimCatalog,
+  BimElementMetadata,
+  BimIndexDescriptor,
   BuildingId,
   CameraPose,
   CreateOccupancyInput,
@@ -110,6 +113,21 @@ export class AppCoordinator {
       .then(() => undefined);
   }
 
+  public getBimCatalog(
+    descriptor: BimIndexDescriptor,
+    signal?: AbortSignal,
+  ): Promise<BimCatalog> {
+    return this.api.getBimCatalog(descriptor, signal);
+  }
+
+  public getBimElementMetadata(
+    descriptor: BimIndexDescriptor,
+    modelLocalId: number,
+    signal?: AbortSignal,
+  ): Promise<BimElementMetadata> {
+    return this.api.getBimElementMetadata(descriptor, modelLocalId, signal);
+  }
+
   public async selectUnit(unitId: UnitId): Promise<void> {
     const state = this.store.getState();
     const buildingId = state.building.selectedId;
@@ -199,11 +217,7 @@ export class AppCoordinator {
     signal?: AbortSignal,
   ): Promise<void> {
     return this.api
-      .deleteOccupancy(
-        this.requireCurrentBuilding(),
-        occupancyId,
-        signal,
-      )
+      .deleteOccupancy(this.requireCurrentBuilding(), occupancyId, signal)
       .then(() => undefined);
   }
 

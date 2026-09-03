@@ -308,7 +308,7 @@ export function renderOperatorShell(
     ".env-opacity-badge",
     HTMLElement,
   );
-  const viewer = new ViewerSessionController(store, canvasHost);
+  const viewer = new ViewerSessionController(store, canvasHost, coordinator);
   viewer.start();
   const touchCapable =
     navigator.maxTouchPoints > 0 ||
@@ -457,94 +457,113 @@ export function renderOperatorShell(
       }
     });
 
-    debugCameraBtn?.addEventListener("click", () => void (async () => {
-      if (debugCameraBtn.disabled) return;
-      const pose = viewer.getCurrentCameraPose();
-      if (debugCameraStatus === null) return;
-      debugCameraStatus.hidden = false;
-      if (pose === undefined) {
-        debugCameraStatus.textContent =
-          "The viewer is not ready yet. Wait for the model to finish loading.";
-        return;
-      }
-      debugCameraBtn.disabled = true;
-      debugCameraStatus.textContent = "Saving default view...";
-      try {
-        await coordinator.updateDefaultCamera(pose);
-        viewer.setDefaultCamera(pose);
-        const position = pose.position.map((value) => value.toFixed(2)).join(", ");
-        const target = pose.target.map((value) => value.toFixed(2)).join(", ");
-        const fov = pose.fov === undefined ? "n/a" : `${pose.fov.toFixed(1)}°`;
-        debugCameraStatus.textContent = `Default saved · Position ${position} · Target ${target} · FOV ${fov}`;
-        console.info("Default camera persisted for the current scene:", pose);
-      } catch (error: unknown) {
-        debugCameraStatus.textContent = `Save failed: ${error instanceof Error ? error.message : String(error)}`;
-      } finally {
-        debugCameraBtn.disabled = false;
-      }
-    })());
+    debugCameraBtn?.addEventListener(
+      "click",
+      () =>
+        void (async () => {
+          if (debugCameraBtn.disabled) return;
+          const pose = viewer.getCurrentCameraPose();
+          if (debugCameraStatus === null) return;
+          debugCameraStatus.hidden = false;
+          if (pose === undefined) {
+            debugCameraStatus.textContent =
+              "The viewer is not ready yet. Wait for the model to finish loading.";
+            return;
+          }
+          debugCameraBtn.disabled = true;
+          debugCameraStatus.textContent = "Saving default view...";
+          try {
+            await coordinator.updateDefaultCamera(pose);
+            viewer.setDefaultCamera(pose);
+            const position = pose.position
+              .map((value) => value.toFixed(2))
+              .join(", ");
+            const target = pose.target
+              .map((value) => value.toFixed(2))
+              .join(", ");
+            const fov =
+              pose.fov === undefined ? "n/a" : `${pose.fov.toFixed(1)}°`;
+            debugCameraStatus.textContent = `Default saved · Position ${position} · Target ${target} · FOV ${fov}`;
+            console.info(
+              "Default camera persisted for the current scene:",
+              pose,
+            );
+          } catch (error: unknown) {
+            debugCameraStatus.textContent = `Save failed: ${error instanceof Error ? error.message : String(error)}`;
+          } finally {
+            debugCameraBtn.disabled = false;
+          }
+        })(),
+    );
 
-    debugRunBtn?.addEventListener("click", () => void (async () => {
-      if (debugRunBtn.disabled) return;
-      debugRunBtn.disabled = true;
-      if (debugStatusRow) debugStatusRow.hidden = false;
-      if (debugSpinner) debugSpinner.hidden = false;
-      if (debugStatusText) {
-        debugStatusText.textContent = "Scanning IFC model elements...";
-      }
+    debugRunBtn?.addEventListener(
+      "click",
+      () =>
+        void (async () => {
+          if (debugRunBtn.disabled) return;
+          debugRunBtn.disabled = true;
+          if (debugStatusRow) debugStatusRow.hidden = false;
+          if (debugSpinner) debugSpinner.hidden = false;
+          if (debugStatusText) {
+            debugStatusText.textContent = "Scanning IFC model elements...";
+          }
 
-      try {
-        const result = await viewer.extractApartmentSeeds(
-          (processed, total) => {
+          try {
+            const result = await viewer.extractApartmentSeeds(
+              (processed, total) => {
+                if (debugStatusText) {
+                  debugStatusText.textContent =
+                    total > 0
+                      ? `Processing elements: ${String(processed)} / ${String(total)} (${String(Math.round((processed / total) * 100))}%)`
+                      : `Processing elements: ${String(processed)}...`;
+                }
+              },
+            );
+
+            // 1. Log to console as requested
+            console.log("=== EXTRACTED IFC APARTMENT SEEDS ===", result);
+
+            const totalFloors = Object.keys(result).length;
+            const totalUnits = Object.values(result).reduce(
+              (sum, arr) => sum + arr.length,
+              0,
+            );
+
+            lastGeneratedJson = JSON.stringify(result, null, 2);
+
+            // 2. Save / download JSON file automatically
+            const state = store.getState();
+            const bldgId = state.building.selectedId ?? "model";
+            triggerDownload(
+              lastGeneratedJson,
+              `apartment-seeds-${bldgId}.json`,
+            );
+
+            // 3. Display in UI panel
+            if (debugSpinner) debugSpinner.hidden = true;
             if (debugStatusText) {
-              debugStatusText.textContent =
-                total > 0
-                  ? `Processing elements: ${String(processed)} / ${String(total)} (${String(Math.round((processed / total) * 100))}%)`
-                  : `Processing elements: ${String(processed)}...`;
+              debugStatusText.textContent = `Done! Extracted ${String(totalUnits)} apartments across ${String(totalFloors)} floors. (Logged to console & saved JSON)`;
             }
-          },
-        );
-
-        // 1. Log to console as requested
-        console.log("=== EXTRACTED IFC APARTMENT SEEDS ===", result);
-
-        const totalFloors = Object.keys(result).length;
-        const totalUnits = Object.values(result).reduce(
-          (sum, arr) => sum + arr.length,
-          0,
-        );
-
-        lastGeneratedJson = JSON.stringify(result, null, 2);
-
-        // 2. Save / download JSON file automatically
-        const state = store.getState();
-        const bldgId = state.building.selectedId ?? "model";
-        triggerDownload(lastGeneratedJson, `apartment-seeds-${bldgId}.json`);
-
-        // 3. Display in UI panel
-        if (debugSpinner) debugSpinner.hidden = true;
-        if (debugStatusText) {
-          debugStatusText.textContent = `Done! Extracted ${String(totalUnits)} apartments across ${String(totalFloors)} floors. (Logged to console & saved JSON)`;
-        }
-        if (debugResultCount) {
-          debugResultCount.textContent = `${String(totalUnits)} apartments · ${String(totalFloors)} floors`;
-        }
-        if (debugPreview) {
-          debugPreview.textContent = lastGeneratedJson;
-        }
-        if (debugResultContainer) {
-          debugResultContainer.hidden = false;
-        }
-      } catch (err) {
-        console.error("Error extracting apartment seeds:", err);
-        if (debugSpinner) debugSpinner.hidden = true;
-        if (debugStatusText) {
-          debugStatusText.textContent = `Extraction failed: ${err instanceof Error ? err.message : String(err)}`;
-        }
-      } finally {
-        debugRunBtn.disabled = false;
-      }
-    })());
+            if (debugResultCount) {
+              debugResultCount.textContent = `${String(totalUnits)} apartments · ${String(totalFloors)} floors`;
+            }
+            if (debugPreview) {
+              debugPreview.textContent = lastGeneratedJson;
+            }
+            if (debugResultContainer) {
+              debugResultContainer.hidden = false;
+            }
+          } catch (err) {
+            console.error("Error extracting apartment seeds:", err);
+            if (debugSpinner) debugSpinner.hidden = true;
+            if (debugStatusText) {
+              debugStatusText.textContent = `Extraction failed: ${err instanceof Error ? err.message : String(err)}`;
+            }
+          } finally {
+            debugRunBtn.disabled = false;
+          }
+        })(),
+    );
 
     debugCopyBtn?.addEventListener("click", () => {
       if (lastGeneratedJson.length === 0) return;
@@ -682,7 +701,11 @@ export function renderOperatorShell(
     }
 
     if (state.mode === "bim") {
-      renderBimPanel(panelContent, state);
+      renderBimPanel(
+        panelContent,
+        state,
+        (element) => void viewer.selectBimElement(element),
+      );
     } else if (state.mode === "units") {
       renderHouseholdPanel(
         panelContent,

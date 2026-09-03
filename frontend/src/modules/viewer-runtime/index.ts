@@ -1,4 +1,5 @@
 export type {
+  BimElementSummary,
   OperatorViewerPort,
   ViewerLayerState,
   ViewerPick,

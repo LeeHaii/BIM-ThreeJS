@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     String,
     UniqueConstraint,
     text,
@@ -109,6 +110,35 @@ class SceneVersionRecord(Base):
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class BimIndexRecord(Base):
+    __tablename__ = "bim_indexes"
+    __table_args__ = (CheckConstraint("status in ('building','ready','failed')"),)
+    model_version_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id"), primary_key=True)
+    schema_version: Mapped[str] = mapped_column(String(20), default="1.0")
+    extractor_version: Mapped[str] = mapped_column(String(100))
+    source_hash: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="building")
+    element_count: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BimElementMetadataRecord(Base):
+    __tablename__ = "bim_element_metadata"
+    __table_args__ = (
+        Index("ix_bim_element_category", "model_version_id", "category"),
+        Index("ix_bim_element_global_id", "model_version_id", "global_id"),
+    )
+    model_version_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id"), primary_key=True)
+    model_local_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    layer_id: Mapped[str] = mapped_column(String(100))
+    global_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    category: Mapped[str] = mapped_column(String(100), index=True)
+    title: Mapped[str] = mapped_column(String(500))
+    box: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    raw_data: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
 class UnitRecord(Base):
     __tablename__ = "units"
     __table_args__ = (
@@ -142,9 +172,7 @@ class UnitBindingSetRecord(Base):
         ),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    model_version_id: Mapped[str] = mapped_column(
-        ForeignKey("model_versions.id"), index=True
-    )
+    model_version_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id"), index=True)
     source_hash: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(20), default="draft")
     coverage: Mapped[float] = mapped_column(Float, default=0.0)
@@ -158,9 +186,7 @@ class UnitModelBindingRecord(Base):
         Index("ix_unit_binding_lookup", "binding_set_id", "unit_id"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    binding_set_id: Mapped[str] = mapped_column(
-        ForeignKey("unit_binding_sets.id"), index=True
-    )
+    binding_set_id: Mapped[str] = mapped_column(ForeignKey("unit_binding_sets.id"), index=True)
     unit_id: Mapped[str] = mapped_column(ForeignKey("units.id"), index=True)
     layer_id: Mapped[str] = mapped_column(String(100))
     model_local_id: Mapped[int] = mapped_column()

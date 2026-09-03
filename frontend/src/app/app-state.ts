@@ -9,6 +9,7 @@ import type {
   UnitSummary,
 } from "@bim/shared";
 import type {
+  BimElementSummary,
   ViewerLayerState,
   ViewerPick,
 } from "../modules/viewer-runtime/index.js";
@@ -38,6 +39,13 @@ export interface AppState {
     readonly touchNavigation: "orbit" | "vertical";
   };
   readonly bimSelection: ViewerPick | undefined;
+  readonly bimCatalog: {
+    readonly status: LoadStatus;
+    readonly items: readonly BimElementSummary[];
+    readonly processed: number;
+    readonly total: number;
+    readonly error?: string | undefined;
+  };
   readonly bimInspection: {
     readonly status: LoadStatus;
   };
@@ -73,6 +81,13 @@ export const initialState: AppState = {
     touchNavigation: "orbit",
   },
   bimSelection: undefined,
+  bimCatalog: {
+    status: "idle",
+    items: [],
+    processed: 0,
+    total: 0,
+    error: undefined,
+  },
   bimInspection: { status: "idle" },
   units: {
     query: "",

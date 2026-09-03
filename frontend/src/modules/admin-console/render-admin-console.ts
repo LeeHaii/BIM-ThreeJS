@@ -1,5 +1,6 @@
 import type {
   AdminOccupancy,
+  BimIndexStatus,
   BuildingDetail,
   BuildingId,
   BuildingSummary,
@@ -33,6 +34,12 @@ function formatBytes(bytes: number): string {
   return `${val.toFixed(2)} ${sizes[i] ?? "Bytes"}`;
 }
 
+function formatGeneratedAt(value: string | undefined): string {
+  if (value === undefined) return "Not generated";
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
+}
+
 function getFormString(
   formData: FormData,
   name: string,
@@ -59,6 +66,8 @@ export function renderAdminConsole(
   let unitIsLoading = false;
   let unitRequestGeneration = 0;
   let activeSceneManifest: SceneManifestV2 | null = null;
+  let bimIndexStatus: BimIndexStatus | null = null;
+  let bimIndexIsBuilding = false;
 
   // Selected unit for resident modal
   let selectedUnitForResidents: UnitSummary | null = null;
@@ -98,6 +107,7 @@ export function renderAdminConsole(
         currentBuildingId = undefined;
         currentBuilding = null;
         activeSceneManifest = null;
+        bimIndexStatus = null;
         units = [];
         unitTotal = 0;
         unitIsLoading = false;
@@ -126,19 +136,23 @@ export function renderAdminConsole(
 
   async function selectBuilding(id: BuildingId): Promise<void> {
     currentBuildingId = id;
+    bimIndexStatus = null;
+    bimIndexIsBuilding = false;
     unitPage = 1;
     unitTotal = 0;
     const requestGeneration = ++unitRequestGeneration;
     window.history.replaceState(null, "", `/admin/${id}`);
     try {
-      const [detail, manifestResult, unitsResult] = await Promise.allSettled([
-        api.getBuilding(id),
-        api.getActiveSceneManifest(id),
-        api.searchUnits(id, unitSearchQuery, undefined, {
-          page: unitPage,
-          pageSize: unitPageSize,
-        }),
-      ]);
+      const [detail, manifestResult, unitsResult, bimIndexResult] =
+        await Promise.allSettled([
+          api.getBuilding(id),
+          api.getActiveSceneManifest(id),
+          api.searchUnits(id, unitSearchQuery, undefined, {
+            page: unitPage,
+            pageSize: unitPageSize,
+          }),
+          api.getBimIndexStatus(id),
+        ]);
 
       if (
         requestGeneration !== unitRequestGeneration ||
@@ -150,6 +164,8 @@ export function renderAdminConsole(
       currentBuilding = detail.status === "fulfilled" ? detail.value : null;
       activeSceneManifest =
         manifestResult.status === "fulfilled" ? manifestResult.value : null;
+      bimIndexStatus =
+        bimIndexResult.status === "fulfilled" ? bimIndexResult.value : null;
       if (unitsResult.status === "fulfilled") {
         units = unitsResult.value.items;
         unitPage = unitsResult.value.page;
@@ -376,6 +392,18 @@ export function renderAdminConsole(
       (l) => l.type === "gltf",
     );
     const selectedIdStr = currentBuildingId ? String(currentBuildingId) : "";
+    const indexState = bimIndexIsBuilding
+      ? "building"
+      : (bimIndexStatus?.status ?? "missing");
+    const indexStateLabel =
+      indexState === "ready"
+        ? "Ready"
+        : indexState === "building"
+          ? "Building index"
+          : indexState === "failed"
+            ? "Build failed"
+            : "Not built";
+    const canBuildIndex = ifcLayer !== undefined && !bimIndexIsBuilding;
 
     return `
       <div class="admin-card-grid">
@@ -433,11 +461,58 @@ export function renderAdminConsole(
           </div>
         </div>
 
+        <div class="admin-card admin-bim-index-card">
+          <div class="admin-card-header">
+            <div>
+              <h3 class="admin-card-title">BIM Metadata Index</h3>
+              <p class="admin-card-subtitle">Precompute searchable metadata once so every viewer opens the BIM structure without scanning the model.</p>
+            </div>
+            <span class="admin-status-pill bim-index-${indexState}">${indexStateLabel}</span>
+          </div>
+          <div class="admin-card-content">
+            <div class="admin-meta-grid">
+              <div class="admin-meta-item">
+                <span class="admin-meta-label">Indexed elements</span>
+                <span class="admin-meta-value">${String(bimIndexStatus?.elementCount ?? 0)}</span>
+              </div>
+              <div class="admin-meta-item">
+                <span class="admin-meta-label">Last generated</span>
+                <span class="admin-meta-value">${escapeHtml(formatGeneratedAt(bimIndexStatus?.generatedAt))}</span>
+              </div>
+            </div>
+            ${
+              bimIndexStatus?.error
+                ? `<div class="admin-index-error" role="alert">${escapeHtml(bimIndexStatus.error)}</div>`
+                : ""
+            }
+            <div class="admin-index-actions">
+              <p class="admin-index-help" role="status" aria-live="polite">
+                ${
+                  bimIndexIsBuilding
+                    ? `Reading the fragments file and saving metadata in batches (${String(bimIndexStatus?.elementCount ?? 0)} elements processed so far). Large models can take several minutes.`
+                    : indexState === "ready"
+                      ? "The viewer downloads a compact catalog once and fetches full metadata only when an element is selected."
+                      : ifcLayer === undefined
+                        ? "Upload a BIM model before building its metadata index."
+                        : "Build the index before using the BIM structure browser."
+                }
+              </p>
+              <button type="button" class="admin-btn admin-btn-secondary btn-build-bim-index" ${canBuildIndex ? "" : "disabled"}>
+                ${
+                  bimIndexIsBuilding
+                    ? `<svg class="admin-spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg><span>Building metadata index…</span>`
+                    : `<span>${indexState === "ready" ? "Rebuild metadata index" : indexState === "failed" ? "Retry building metadata index" : "Build metadata index"}</span>`
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="admin-card">
           <div class="admin-card-header">
             <div>
               <h3 class="admin-card-title">Upload & Setup 3D Models</h3>
-              <p class="admin-card-subtitle">Upload 1 IFC model (or converted .frag) and 1 GLTF/GLB environment model to save to database.</p>
+              <p class="admin-card-subtitle">Upload 1 IFC model (or converted .frag) and 1 GLTF/GLB environment model. Metadata is indexed during activation.</p>
             </div>
           </div>
           <div class="admin-card-content">
@@ -1625,6 +1700,61 @@ export function renderAdminConsole(
         });
       });
 
+    const buildBimIndexButton = root.querySelector<HTMLButtonElement>(
+      ".btn-build-bim-index",
+    );
+    buildBimIndexButton?.addEventListener("click", () => {
+      void (async () => {
+        if (!currentBuildingId || bimIndexIsBuilding) return;
+        const buildingId = currentBuildingId;
+        bimIndexIsBuilding = true;
+        render();
+        const pollInterval = window.setInterval(() => {
+          if (!bimIndexIsBuilding || currentBuildingId !== buildingId) {
+            window.clearInterval(pollInterval);
+            return;
+          }
+          void api
+            .getBimIndexStatus(buildingId)
+            .then((status) => {
+              if (!bimIndexIsBuilding || currentBuildingId !== buildingId) return;
+              if (status.elementCount > (bimIndexStatus?.elementCount ?? 0)) {
+                bimIndexStatus = status;
+                render();
+              }
+            })
+            .catch(() => undefined);
+        }, 1500);
+
+        try {
+          bimIndexStatus = await api.buildBimIndex(buildingId);
+          if (currentBuildingId !== buildingId) return;
+          activeSceneManifest = await api.getActiveSceneManifest(buildingId);
+          bimIndexIsBuilding = false;
+          render();
+          showToast(
+            `${String(bimIndexStatus.elementCount)} BIM elements indexed.`,
+            "success",
+          );
+        } catch (err: unknown) {
+          if (currentBuildingId !== buildingId) return;
+          bimIndexStatus = await api
+            .getBimIndexStatus(buildingId)
+            .catch(() => bimIndexStatus);
+          bimIndexIsBuilding = false;
+          render();
+          showToast(
+            err instanceof Error
+              ? err.message
+              : "Failed to build BIM metadata index",
+            "error",
+          );
+        } finally {
+          window.clearInterval(pollInterval);
+        }
+      })();
+    });
+
     // Model Upload Form Submission
     const modelUploadForm = root.querySelector<HTMLFormElement>(
       ".form-upload-models",
@@ -1669,18 +1799,20 @@ export function renderAdminConsole(
             <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
             <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
           </svg>
-          <span>${isIfcConversion ? "Converting IFC to Fragments (.frag)... please wait" : "Uploading & Saving to Database..."}</span>
+          <span>${isIfcConversion ? "Converting IFC and indexing metadata…" : "Uploading and indexing metadata…"}</span>
         `;
         }
 
         try {
-          const manifest = await api.uploadModels(currentBuildingId, formData);
+          const buildingId = currentBuildingId;
+          const manifest = await api.uploadModels(buildingId, formData);
           activeSceneManifest = manifest;
+          bimIndexStatus = await api.getBimIndexStatus(buildingId);
+          render();
           showToast(
-            "3D Models and Environment saved and activated successfully!",
+            `${String(bimIndexStatus.elementCount)} BIM elements indexed; the 3D scene is active.`,
             "success",
           );
-          render();
         } catch (err: unknown) {
           const msg =
             err instanceof Error
